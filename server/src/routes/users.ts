@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import { getSettings } from '../config/database.js';
 import { searchUsers, getUser, updateUser, updateUserPhoto, deleteUserPhoto, resetPassword, createUser, searchGroups, addUserToGroup, removeUserFromGroup, setUserEnabled, deleteUser, unlockUser } from '../services/ldap.js';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.js';
+import { logAction, logError } from '../utils/logger.js';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -47,8 +48,10 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
     }
 
     await createUser(settings, { sAMAccountName, givenName, sn, displayName, userPrincipalName, mail, password, ou, enabled });
+    logAction(req.user!.sAMAccountName, 'CREATE_USER', sAMAccountName, displayName);
     res.status(201).json({ success: true, sAMAccountName });
   } catch (err: any) {
+    logError(req.user?.sAMAccountName || 'unknown', 'CREATE_USER', err.message);
     console.error('Create user error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -101,9 +104,12 @@ router.put('/:username', authMiddleware, async (req: AuthRequest, res: Response)
       changes[key] = value as string | null;
     }
 
+    const changedKeys = Object.keys(changes).filter((k) => changes[k] !== (user as any)[k]);
     await updateUser(settings, user.dn, changes, user);
+    logAction(req.user!.sAMAccountName, 'UPDATE_USER', String(req.params.username), changedKeys.join(', '));
     res.json({ success: true });
   } catch (err: any) {
+    logError(req.user?.sAMAccountName || 'unknown', 'UPDATE_USER', err.message);
     console.error('Update user error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -125,8 +131,10 @@ router.post('/:username/toggle', authMiddleware, adminMiddleware, async (req: Au
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
 
     await setUserEnabled(settings, user.dn, enabled);
+    logAction(req.user!.sAMAccountName, enabled ? 'ENABLE_USER' : 'DISABLE_USER', String(req.params.username));
     res.json({ success: true });
   } catch (err: any) {
+    logError(req.user?.sAMAccountName || 'unknown', 'TOGGLE_USER', err.message);
     console.error('Toggle user error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -142,8 +150,10 @@ router.post('/:username/unlock', authMiddleware, adminMiddleware, async (req: Au
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
 
     await unlockUser(settings, user.dn);
+    logAction(req.user!.sAMAccountName, 'UNLOCK_USER', String(req.params.username));
     res.json({ success: true });
   } catch (err: any) {
+    logError(req.user?.sAMAccountName || 'unknown', 'UNLOCK_USER', err.message);
     console.error('Unlock user error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -165,8 +175,10 @@ router.delete('/:username', authMiddleware, adminMiddleware, async (req: AuthReq
     }
 
     await deleteUser(settings, user.dn);
+    logAction(req.user!.sAMAccountName, 'DELETE_USER', String(req.params.username), user.displayName);
     res.json({ success: true });
   } catch (err: any) {
+    logError(req.user?.sAMAccountName || 'unknown', 'DELETE_USER', err.message);
     console.error('Delete user error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -207,8 +219,10 @@ router.post('/:username/photo', authMiddleware, upload.single('photo'), async (r
     }
 
     await updateUserPhoto(settings, user.dn, resized);
+    logAction(req.user!.sAMAccountName, 'UPLOAD_PHOTO', String(req.params.username), `${Math.round(resized.length / 1024)}KB`);
     res.json({ success: true });
   } catch (err: any) {
+    logError(req.user?.sAMAccountName || 'unknown', 'UPLOAD_PHOTO', err.message);
     console.error('Upload photo error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -230,8 +244,10 @@ router.delete('/:username/photo', authMiddleware, async (req: AuthRequest, res: 
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
 
     await deleteUserPhoto(settings, user.dn);
+    logAction(req.user!.sAMAccountName, 'DELETE_PHOTO', String(req.params.username));
     res.json({ success: true });
   } catch (err: any) {
+    logError(req.user?.sAMAccountName || 'unknown', 'DELETE_PHOTO', err.message);
     console.error('Delete photo error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -259,8 +275,10 @@ router.post('/:username/password', authMiddleware, async (req: AuthRequest, res:
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
 
     await resetPassword(settings, user.dn, newPassword);
+    logAction(req.user!.sAMAccountName, 'RESET_PASSWORD', String(req.params.username));
     res.json({ success: true });
   } catch (err: any) {
+    logError(req.user?.sAMAccountName || 'unknown', 'RESET_PASSWORD', err.message);
     console.error('Reset password error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -294,8 +312,11 @@ router.post('/:username/groups', authMiddleware, adminMiddleware, async (req: Au
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
 
     await addUserToGroup(settings, user.dn, groupDn);
+    const groupCn = groupDn.match(/^CN=([^,]+)/)?.[1] || groupDn;
+    logAction(req.user!.sAMAccountName, 'ADD_TO_GROUP', String(req.params.username), groupCn);
     res.json({ success: true });
   } catch (err: any) {
+    logError(req.user?.sAMAccountName || 'unknown', 'ADD_TO_GROUP', err.message);
     console.error('Add to group error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -314,8 +335,11 @@ router.delete('/:username/groups', authMiddleware, adminMiddleware, async (req: 
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
 
     await removeUserFromGroup(settings, user.dn, groupDn);
+    const groupCn = groupDn.match(/^CN=([^,]+)/)?.[1] || groupDn;
+    logAction(req.user!.sAMAccountName, 'REMOVE_FROM_GROUP', String(req.params.username), groupCn);
     res.json({ success: true });
   } catch (err: any) {
+    logError(req.user?.sAMAccountName || 'unknown', 'REMOVE_FROM_GROUP', err.message);
     console.error('Remove from group error:', err);
     res.status(500).json({ error: err.message });
   }

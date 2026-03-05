@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { getSettings } from '../config/database.js';
 import { authenticate, isAdmin, getUser } from '../services/ldap.js';
 import { AuthRequest, authMiddleware, signToken } from '../middleware/auth.js';
+import { logAction, logError } from '../utils/logger.js';
 
 const router = Router();
 
@@ -22,6 +23,7 @@ router.post('/login', async (req: AuthRequest, res: Response) => {
 
     const user = await authenticate(settings, username, password);
     if (!user) {
+      logError(username, 'LOGIN', 'Invalid credentials');
       res.status(401).json({ error: 'Invalid username or password' });
       return;
     }
@@ -29,11 +31,13 @@ router.post('/login', async (req: AuthRequest, res: Response) => {
     // Check if disabled
     const UAC_ACCOUNTDISABLE = 0x0002;
     if (user.userAccountControl & UAC_ACCOUNTDISABLE) {
+      logError(username, 'LOGIN', 'Account is disabled');
       res.status(403).json({ error: 'Account is disabled' });
       return;
     }
 
     const admin = await isAdmin(settings, user);
+    logAction(username, 'LOGIN', undefined, admin ? 'admin' : 'user');
 
     const token = signToken({
       sAMAccountName: user.sAMAccountName,

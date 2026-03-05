@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getSettings, saveSettings, AdSettings } from '../config/database.js';
 import { testConnection } from '../services/ldap.js';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.js';
+import { logAction, logInfo } from '../utils/logger.js';
 
 const router = Router();
 
@@ -54,6 +55,7 @@ router.post('/', async (req: Request, res: Response) => {
     };
 
     saveSettings(settings);
+    logAction('system', 'SAVE_SETTINGS', settings.url);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -76,6 +78,7 @@ router.post('/test', async (req: Request, res: Response) => {
     };
 
     const result = await testConnection(settings);
+    logInfo(`Connection test: ${result.success ? 'OK' : 'FAILED'} — ${result.message}`);
     res.json(result);
   } catch (err: any) {
     res.json({ success: false, message: err.message });
