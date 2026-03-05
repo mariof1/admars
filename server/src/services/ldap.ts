@@ -60,7 +60,7 @@ function parseEntry(entry: Record<string, any>): AdUser {
   const get = (key: string): any => {
     const v = entry[key];
     if (v === undefined || v === null) return '';
-    if (Array.isArray(v)) return v.length === 1 ? v[0] : v;
+    if (Array.isArray(v)) return v.length === 0 ? '' : v.length === 1 ? v[0] : v;
     return v;
   };
   const getArr = (key: string): string[] => {
@@ -104,7 +104,11 @@ function parseEntry(entry: Record<string, any>): AdUser {
     info: get('info'),
     employeeID: get('employeeID'),
     employeeNumber: get('employeeNumber'),
-    lockoutTime: get('lockoutTime'),
+    lockoutTime: (() => {
+      const v = get('lockoutTime');
+      if (!v || (Array.isArray(v) && v.length === 0)) return '0';
+      return Array.isArray(v) ? v[0] : String(v);
+    })(),
     userAccountControl: parseInt(get('userAccountControl')) || 0,
     whenCreated: get('whenCreated'),
     whenChanged: get('whenChanged'),
