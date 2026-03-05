@@ -315,37 +315,59 @@ export async function createUser(settings: AdSettings, input: CreateUserInput): 
   }
 }
 
-export async function updateUser(settings: AdSettings, dn: string, changes: Record<string, string | string[] | null>): Promise<void> {
+export async function updateUser(settings: AdSettings, dn: string, changes: Record<string, string | string[] | null>, currentUser?: AdUser): Promise<void> {
   const client = createClient(settings);
   try {
     await bindClient(client, settings.bindDN, settings.bindPassword);
 
-    const modifications: ldap.Change[] = [];
+    const readonlyFields = ['dn', 'thumbnailPhoto', 'sAMAccountName', 'objectClass', 'whenCreated', 'whenChanged', 'lastLogon', 'memberOf', 'userAccountControl'];
+    const errors: string[] = [];
+
     for (const [key, value] of Object.entries(changes)) {
-      if (key === 'dn' || key === 'thumbnailPhoto') continue;
-      if (value === null || value === '') {
-        modifications.push(new ldap.Change({
+      if (readonlyFields.includes(key)) continue;
+
+      const isEmpty = value === null || value === '';
+      const hadValue = currentUser ? !!(currentUser as any)[key] : true;
+
+      // Skip clearing attributes that are already empty
+      if (isEmpty && !hadValue) continue;
+
+      let modification: ldap.Change;
+      if (isEmpty && hadValue) {
+        // Delete existing value
+        modification = new ldap.Change({
           operation: 'delete',
           modification: new ldap.Attribute({ type: key, values: [] }),
-        }));
-      } else {
-        modifications.push(new ldap.Change({
+        });
+      } else if (!isEmpty) {
+        // Replace (works for both new and existing values)
+        modification = new ldap.Change({
           operation: 'replace',
           modification: new ldap.Attribute({
             type: key,
-            values: Array.isArray(value) ? value : [value],
+            values: Array.isArray(value) ? value : [value!],
           }),
-        }));
+        });
+      } else {
+        continue;
+      }
+
+      // Apply each change individually so one failure doesn't block the rest
+      try {
+        await new Promise<void>((resolve, reject) => {
+          client.modify(dn, [modification], (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+      } catch (err: any) {
+        console.warn(`Failed to update ${key}: ${err.message}`);
+        errors.push(`${key}: ${err.message}`);
       }
     }
 
-    if (modifications.length > 0) {
-      await new Promise<void>((resolve, reject) => {
-        client.modify(dn, modifications, (err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
+    if (errors.length > 0) {
+      throw new Error(`Some fields failed to update: ${errors.join('; ')}`);
     }
   } finally {
     try { await unbindClient(client); } catch {}

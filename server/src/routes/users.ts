@@ -101,7 +101,7 @@ router.put('/:username', authMiddleware, async (req: AuthRequest, res: Response)
       changes[key] = value as string | null;
     }
 
-    await updateUser(settings, user.dn, changes);
+    await updateUser(settings, user.dn, changes, user);
     res.json({ success: true });
   } catch (err: any) {
     console.error('Update user error:', err);
