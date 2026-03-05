@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { getSettings } from '../config/database.js';
-import { authenticate, isAdmin } from '../services/ldap.js';
+import { authenticate, isAdmin, getUser } from '../services/ldap.js';
 import { AuthRequest, authMiddleware, signToken } from '../middleware/auth.js';
 
 const router = Router();
@@ -50,6 +50,7 @@ router.post('/login', async (req: AuthRequest, res: Response) => {
         displayName: user.displayName,
         mail: user.mail,
         isAdmin: admin,
+        thumbnailPhoto: user.thumbnailPhoto || null,
       },
     });
   } catch (err: any) {
@@ -58,8 +59,25 @@ router.post('/login', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.get('/me', authMiddleware, (req: AuthRequest, res: Response) => {
-  res.json({ user: req.user });
+router.get('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const settings = getSettings();
+    if (settings && req.user?.sAMAccountName) {
+      const adUser = await getUser(settings, req.user.sAMAccountName);
+      if (adUser) {
+        res.json({
+          user: {
+            ...req.user,
+            thumbnailPhoto: adUser.thumbnailPhoto || null,
+          },
+        });
+        return;
+      }
+    }
+    res.json({ user: { ...req.user, thumbnailPhoto: null } });
+  } catch {
+    res.json({ user: { ...req.user, thumbnailPhoto: null } });
+  }
 });
 
 export default router;

@@ -60,9 +60,17 @@ export default function Layout() {
 
         <div className="px-3 py-4 border-t border-gray-800">
           <div className="flex items-center gap-3 px-3 py-2 mb-2">
-            <div className="w-8 h-8 rounded-full bg-brand-600/30 flex items-center justify-center text-xs font-bold text-brand-300">
-              {user?.displayName?.charAt(0) || '?'}
-            </div>
+            {user?.thumbnailPhoto ? (
+              <img
+                src={`data:image/jpeg;base64,${user.thumbnailPhoto}`}
+                alt={user.displayName}
+                className="w-8 h-8 rounded-full object-cover"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-brand-600/30 flex items-center justify-center text-xs font-bold text-brand-300">
+                {user?.displayName?.charAt(0) || '?'}
+              </div>
+            )}
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{user?.displayName}</p>
               <p className="text-[11px] text-gray-400 truncate flex items-center gap-1">
