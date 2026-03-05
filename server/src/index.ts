@@ -24,6 +24,14 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/auth', setupMiddleware, authRouter);
 app.use('/api/users', setupMiddleware, usersRouter);
 
+// API error handler — return JSON for any /api errors (e.g. multer file size)
+app.use('/api', (err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('API error:', err.message);
+  const status = err.status || err.statusCode || 500;
+  const message = err.code === 'LIMIT_FILE_SIZE' ? 'File too large (max 20MB)' : err.message;
+  res.status(status).json({ error: message });
+});
+
 // Serve static files from client build
 const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');
 app.use(express.static(clientDist));

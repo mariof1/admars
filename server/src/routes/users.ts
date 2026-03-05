@@ -6,7 +6,7 @@ import { searchUsers, getUser, updateUser, updateUserPhoto, deleteUserPhoto, res
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.js';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 // List users (admin only)
 router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
