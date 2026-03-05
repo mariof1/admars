@@ -130,9 +130,10 @@ export default function UserEdit() {
 
   const [user, setUser] = useState<AdUser | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
+  const [originalForm, setOriginalForm] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Password reset
   const [showPwModal, setShowPwModal] = useState(false);
@@ -182,21 +183,24 @@ export default function UserEdit() {
           }
         }
         setForm(formData);
+        setOriginalForm(formData);
       })
-      .catch((err) => setMessage({ type: 'error', text: err.message }))
+      .catch((err) => setToast({ type: 'error', text: err.message }))
       .finally(() => setLoading(false));
   }, [username]);
 
   const handleSave = async () => {
     if (!username) return;
     setSaving(true);
-    setMessage(null);
+    setToast(null);
     try {
       await api.updateUser(username, form);
-      setMessage({ type: 'success', text: 'User updated successfully' });
-      setTimeout(() => setMessage(null), 3000);
+      setOriginalForm({ ...form });
+      setToast({ type: 'success', text: 'User updated successfully' });
+      setTimeout(() => setToast(null), 3000);
     } catch (err: any) {
-      setMessage({ type: 'error', text: err.message });
+      setToast({ type: 'error', text: err.message });
+      setTimeout(() => setToast(null), 5000);
     } finally {
       setSaving(false);
     }
@@ -229,10 +233,10 @@ export default function UserEdit() {
       const data = await api.getUser(username);
       setUser(data);
       setCropImage(null);
-      setMessage({ type: 'success', text: 'Photo updated' });
-      setTimeout(() => setMessage(null), 3000);
+      setToast({ type: 'success', text: 'Photo updated' });
+      setTimeout(() => setToast(null), 3000);
     } catch (err: any) {
-      setMessage({ type: 'error', text: err.message });
+      setToast({ type: 'error', text: err.message });
     } finally {
       setCropUploading(false);
     }
@@ -243,10 +247,10 @@ export default function UserEdit() {
     try {
       await api.deletePhoto(username);
       setUser((u) => u ? { ...u, thumbnailPhoto: undefined } : null);
-      setMessage({ type: 'success', text: 'Photo removed' });
-      setTimeout(() => setMessage(null), 3000);
+      setToast({ type: 'success', text: 'Photo removed' });
+      setTimeout(() => setToast(null), 3000);
     } catch (err: any) {
-      setMessage({ type: 'error', text: err.message });
+      setToast({ type: 'error', text: err.message });
     }
   };
 
@@ -296,9 +300,21 @@ export default function UserEdit() {
   const isDisabled = (user.userAccountControl & UAC_DISABLED) !== 0;
   const isLocked = user.lockoutTime && user.lockoutTime !== '0' && user.lockoutTime !== '';
 
+  const isDirty = Object.keys(form).some((k) => form[k] !== originalForm[k]);
+  const changedCount = Object.keys(form).filter((k) => form[k] !== originalForm[k]).length;
+
   return (
-    <div>
-      {/* Header */}
+    <div className="pb-20">
+      {/* Floating toast notification */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-lg text-sm shadow-lg border transition-all animate-slide-in ${
+          toast.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'
+        }`}>
+          {toast.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+          {toast.text}
+          <button onClick={() => setToast(null)} className="ml-2 hover:opacity-70"><X size={14} /></button>
+        </div>
+      )}
       <div className="flex items-center gap-4 mb-6">
         {isAdmin && (
           <button onClick={() => navigate('/users')} className="btn-ghost p-2"><ArrowLeft size={20} /></button>
@@ -308,16 +324,6 @@ export default function UserEdit() {
           <p className="text-gray-500 text-sm">{user.sAMAccountName} • {user.userPrincipalName}</p>
         </div>
       </div>
-
-      {/* Status message */}
-      {message && (
-        <div className={`flex items-center gap-2 p-3 rounded-lg text-sm border mb-6 ${
-          message.type === 'success' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'
-        }`}>
-          {message.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-          {message.text}
-        </div>
-      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Photo & quick info */}
@@ -374,10 +380,10 @@ export default function UserEdit() {
                       await api.unlockUser(user.sAMAccountName);
                       const updated = await api.getUser(user.sAMAccountName);
                       setUser(updated);
-                      setMessage({ type: 'success', text: 'Account unlocked' });
-                      setTimeout(() => setMessage(null), 3000);
+                      setToast({ type: 'success', text: 'Account unlocked' });
+                      setTimeout(() => setToast(null), 3000);
                     } catch (err: any) {
-                      setMessage({ type: 'error', text: err.message });
+                      setToast({ type: 'error', text: err.message });
                     }
                   }}
                   className="btn-secondary w-full text-amber-600 hover:text-amber-700"
@@ -400,10 +406,10 @@ export default function UserEdit() {
                             await api.toggleUser(user.sAMAccountName, isDisabled);
                             const updated = await api.getUser(user.sAMAccountName);
                             setUser(updated);
-                            setMessage({ type: 'success', text: `Account ${action}d` });
-                            setTimeout(() => setMessage(null), 3000);
+                            setToast({ type: 'success', text: `Account ${action}d` });
+                            setTimeout(() => setToast(null), 3000);
                           } catch (err: any) {
-                            setMessage({ type: 'error', text: err.message });
+                            setToast({ type: 'error', text: err.message });
                           }
                           setConfirmModal(null);
                         },
@@ -458,10 +464,10 @@ export default function UserEdit() {
                                 try {
                                   await api.removeFromGroup(user.sAMAccountName, group);
                                   setUser((u) => u ? { ...u, memberOf: u.memberOf.filter((g) => g !== group) } : null);
-                                  setMessage({ type: 'success', text: `Removed from ${cn}` });
-                                  setTimeout(() => setMessage(null), 3000);
+                                  setToast({ type: 'success', text: `Removed from ${cn}` });
+                                  setTimeout(() => setToast(null), 3000);
                                 } catch (err: any) {
-                                  setMessage({ type: 'error', text: err.message });
+                                  setToast({ type: 'error', text: err.message });
                                 }
                                 setConfirmModal(null);
                               },
@@ -515,19 +521,24 @@ export default function UserEdit() {
             </div>
           ))}
 
-          {/* Save button */}
-          {canEdit && (
-            <div className="flex justify-end">
-              <button onClick={handleSave} disabled={saving} className="btn-primary px-8">
-                {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                Save Changes
-              </button>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Password Reset Modal */}
+      {/* Sticky save bar */}
+      {canEdit && isDirty && (
+        <div className="fixed bottom-0 left-0 lg:left-64 right-0 bg-white/95 backdrop-blur border-t border-gray-200 px-6 py-3 z-40 flex items-center justify-between gap-4">
+          <p className="text-sm text-gray-500">{changedCount} unsaved change{changedCount !== 1 ? 's' : ''}</p>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setForm({ ...originalForm })} className="btn-secondary px-4 py-2 text-sm">
+              Discard
+            </button>
+            <button onClick={handleSave} disabled={saving} className="btn-primary px-6 py-2 text-sm">
+              {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+              Save Changes
+            </button>
+          </div>
+        </div>
+      )}
       {showPwModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowPwModal(false)}>
           <div className="card w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
@@ -617,8 +628,8 @@ export default function UserEdit() {
           onClose={() => setShowGroupModal(false)}
           onAdded={(groupDn) => {
             setUser((u) => u ? { ...u, memberOf: [...u.memberOf, groupDn] } : null);
-            setMessage({ type: 'success', text: 'Added to group' });
-            setTimeout(() => setMessage(null), 3000);
+            setToast({ type: 'success', text: 'Added to group' });
+            setTimeout(() => setToast(null), 3000);
           }}
         />
       )}
@@ -676,7 +687,7 @@ export default function UserEdit() {
                     setShowDeleteModal(false);
                     navigate('/users');
                   } catch (err: any) {
-                    setMessage({ type: 'error', text: err.message });
+                    setToast({ type: 'error', text: err.message });
                     setShowDeleteModal(false);
                   } finally {
                     setDeleteLoading(false);
