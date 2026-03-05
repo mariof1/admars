@@ -21,21 +21,21 @@ router.post('/login', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const user = await authenticate(settings, username, password);
-    if (!user) {
-      logError(username, 'LOGIN', 'Invalid credentials');
-      res.status(401).json({ error: 'Invalid username or password' });
+    const result = await authenticate(settings, username, password);
+    if (!result.user) {
+      const reason = result.error || 'Invalid credentials';
+      logError(username, 'LOGIN', reason);
+      if (result.error === 'Account is disabled') {
+        res.status(403).json({ error: 'Account is disabled' });
+      } else if (result.error === 'Account is locked') {
+        res.status(403).json({ error: 'Account is locked. Contact an administrator.' });
+      } else {
+        res.status(401).json({ error: 'Invalid username or password' });
+      }
       return;
     }
 
-    // Check if disabled
-    const UAC_ACCOUNTDISABLE = 0x0002;
-    if (user.userAccountControl & UAC_ACCOUNTDISABLE) {
-      logError(username, 'LOGIN', 'Account is disabled');
-      res.status(403).json({ error: 'Account is disabled' });
-      return;
-    }
-
+    const user = result.user;
     const admin = await isAdmin(settings, user);
     logAction(username, 'LOGIN', undefined, admin ? 'admin' : 'user');
 

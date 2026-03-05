@@ -114,7 +114,7 @@ function parseEntry(entry: Record<string, any>): AdUser {
   };
 }
 
-export async function authenticate(settings: AdSettings, username: string, password: string): Promise<AdUser | null> {
+export async function authenticate(settings: AdSettings, username: string, password: string): Promise<{ user: AdUser | null; error?: string }> {
   const client = createClient(settings);
   try {
     // First bind with service account to find user DN
@@ -127,11 +127,24 @@ export async function authenticate(settings: AdSettings, username: string, passw
       attributes: AD_USER_ATTRIBUTES,
     });
 
-    if (searchEntries.length === 0) return null;
+    if (searchEntries.length === 0) return { user: null };
 
     const userEntry = searchEntries[0];
     const userDn = userEntry.dn;
-    if (!userDn) return null;
+    if (!userDn) return { user: null };
+
+    const user = parseEntry(userEntry);
+
+    // Check disabled BEFORE attempting bind to avoid contributing to lockout
+    const UAC_ACCOUNTDISABLE = 0x0002;
+    if (user.userAccountControl & UAC_ACCOUNTDISABLE) {
+      return { user: null, error: 'Account is disabled' };
+    }
+
+    // Check locked BEFORE attempting bind
+    if (user.lockoutTime && user.lockoutTime !== '0') {
+      return { user: null, error: 'Account is locked' };
+    }
 
     await client.unbind();
 
@@ -141,10 +154,10 @@ export async function authenticate(settings: AdSettings, username: string, passw
       await userClient.bind(userDn, password);
       await userClient.unbind();
     } catch {
-      return null;
+      return { user: null, error: 'Invalid credentials' };
     }
 
-    return parseEntry(userEntry);
+    return { user };
   } finally {
     try { await client.unbind(); } catch {}
   }
