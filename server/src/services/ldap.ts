@@ -493,16 +493,29 @@ export async function searchOUs(settings: AdSettings): Promise<AdOU[]> {
 
     const domainDepth = domainRoot.split(',').length;
 
-    return searchEntries
-      .map((entry) => {
-        const dn = entry.dn ?? '';
-        const name = String(entry.ou || entry.name || '');
-        const desc = entry.description;
-        const description = Array.isArray(desc) ? (desc.length > 0 ? String(desc[0]) : '') : String(desc || '');
-        const depth = dn.split(',').length - domainDepth;
-        return { dn, name, description, depth };
-      })
-      .sort((a, b) => a.dn.localeCompare(b.dn));
+    const ous = searchEntries.map((entry) => {
+      const dn = entry.dn ?? '';
+      const name = String(entry.ou || entry.name || '');
+      const desc = entry.description;
+      const description = Array.isArray(desc) ? (desc.length > 0 ? String(desc[0]) : '') : String(desc || '');
+      const depth = dn.split(',').length - domainDepth;
+      return { dn, name, description, depth };
+    });
+
+    // Sort hierarchically: reverse DN components so parents group before children
+    // e.g. "OU=Sub,OU=Top,DC=x" → ["DC=x","OU=Top","OU=Sub"] for comparison
+    ous.sort((a, b) => {
+      const aParts = a.dn.split(',').reverse();
+      const bParts = b.dn.split(',').reverse();
+      for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+        const aPart = (aParts[i] || '').toLowerCase();
+        const bPart = (bParts[i] || '').toLowerCase();
+        if (aPart !== bPart) return aPart.localeCompare(bPart);
+      }
+      return 0;
+    });
+
+    return ous;
   } finally {
     try { await client.unbind(); } catch {}
   }
