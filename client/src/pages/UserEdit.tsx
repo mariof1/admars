@@ -169,6 +169,8 @@ export default function UserEdit() {
   const isAdmin = authUser?.isAdmin ?? false;
   const isSelf = authUser?.sAMAccountName === username;
   const canEdit = isAdmin;
+  const canEditPhoto = isAdmin || isSelf;
+  const canResetPassword = isAdmin || isSelf;
 
   useEffect(() => {
     if (!username) return;
@@ -343,7 +345,7 @@ export default function UserEdit() {
                     {(user.displayName || user.sAMAccountName).charAt(0).toUpperCase()}
                   </div>
                 )}
-                {canEdit && (
+                {canEditPhoto && (
                   <label className="absolute bottom-0 right-0 w-10 h-10 bg-brand-600 text-white rounded-full flex items-center justify-center cursor-pointer shadow-lg hover:bg-brand-700 transition-colors">
                     <Camera size={16} />
                     <input type="file" accept="image/*" className="hidden" onChange={handlePhotoSelect} />
@@ -359,7 +361,7 @@ export default function UserEdit() {
                 {isDisabled ? 'Disabled' : isLocked ? <><Lock size={12} /> Locked</> : 'Active'}
               </span>
 
-              {canEdit && user.thumbnailPhoto && (
+              {canEditPhoto && user.thumbnailPhoto && (
                 <button onClick={handlePhotoDelete} className="btn-ghost text-red-500 hover:text-red-700 mt-3 text-xs">
                   <Trash2 size={14} /> Remove photo
                 </button>
@@ -368,11 +370,13 @@ export default function UserEdit() {
           </div>
 
           {/* Actions card */}
-          {canEdit && (
+          {(canResetPassword || isAdmin) && (
             <div className="card p-4 space-y-2">
-              <button onClick={() => setShowPwModal(true)} className="btn-secondary w-full">
-                <Key size={16} /> Reset Password
-              </button>
+              {canResetPassword && (
+                <button onClick={() => setShowPwModal(true)} className="btn-secondary w-full">
+                  <Key size={16} /> Reset Password
+                </button>
+              )}
               {isAdmin && isLocked && (
                 <button
                   onClick={async () => {

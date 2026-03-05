@@ -183,7 +183,7 @@ router.delete('/:username', authMiddleware, adminMiddleware, validateUsername, a
 });
 
 // Upload photo
-router.post('/:username/photo', authMiddleware, adminMiddleware, validateUsername, upload.single('photo'), async (req: AuthRequest, res: Response) => {
+router.post('/:username/photo', authMiddleware, validateUsername, upload.single('photo'), async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
@@ -227,7 +227,7 @@ router.post('/:username/photo', authMiddleware, adminMiddleware, validateUsernam
 });
 
 // Delete photo
-router.delete('/:username/photo', authMiddleware, adminMiddleware, validateUsername, async (req: AuthRequest, res: Response) => {
+router.delete('/:username/photo', authMiddleware, validateUsername, async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
@@ -252,7 +252,7 @@ router.delete('/:username/photo', authMiddleware, adminMiddleware, validateUsern
 });
 
 // Reset password (admin or self)
-router.post('/:username/password', authMiddleware, adminMiddleware, validateUsername, async (req: AuthRequest, res: Response) => {
+router.post('/:username/password', authMiddleware, validateUsername, async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
