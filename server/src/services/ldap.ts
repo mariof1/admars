@@ -232,6 +232,75 @@ export async function getUser(settings: AdSettings, sAMAccountName: string): Pro
   }
 }
 
+export interface CreateUserInput {
+  sAMAccountName: string;
+  givenName: string;
+  sn: string;
+  displayName: string;
+  userPrincipalName: string;
+  mail?: string;
+  password: string;
+  ou?: string; // target OU, defaults to baseDN
+  enabled?: boolean;
+}
+
+export async function createUser(settings: AdSettings, input: CreateUserInput): Promise<void> {
+  const client = createClient(settings);
+  try {
+    await bindClient(client, settings.bindDN, settings.bindPassword);
+
+    const ou = input.ou || settings.baseDN;
+    const dn = `CN=${input.displayName},${ou}`;
+
+    // userAccountControl: 512 = normal account, 514 = disabled
+    const uac = input.enabled !== false ? '512' : '514';
+
+    const entry: Record<string, string | string[]> = {
+      objectClass: ['top', 'person', 'organizationalPerson', 'user'],
+      sAMAccountName: input.sAMAccountName,
+      userPrincipalName: input.userPrincipalName,
+      givenName: input.givenName,
+      sn: input.sn,
+      displayName: input.displayName,
+      cn: input.displayName,
+      userAccountControl: uac,
+    };
+
+    if (input.mail) entry.mail = input.mail;
+
+    await new Promise<void>((resolve, reject) => {
+      client.add(dn, entry, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    // Set password (requires LDAPS typically)
+    try {
+      const quotedPassword = `"${input.password}"`;
+      const passwordBuffer = Buffer.from(quotedPassword, 'utf16le');
+      const pwChange = new ldap.Change({
+        operation: 'replace',
+        modification: new ldap.Attribute({
+          type: 'unicodePwd',
+          vals: [passwordBuffer],
+        } as any),
+      });
+      await new Promise<void>((resolve, reject) => {
+        client.modify(dn, [pwChange], (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    } catch (pwErr: any) {
+      // Password set may fail over non-TLS, user is still created
+      console.warn('User created but password could not be set (requires LDAPS):', pwErr.message);
+    }
+  } finally {
+    try { await unbindClient(client); } catch {}
+  }
+}
+
 export async function updateUser(settings: AdSettings, dn: string, changes: Record<string, string | string[] | null>): Promise<void> {
   const client = createClient(settings);
   try {

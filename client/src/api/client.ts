@@ -56,6 +56,7 @@ class ApiClient {
   getMe() { return this.fetch<{ user: any }>('/auth/me'); }
 
   // Users
+  createUser(data: any) { return this.fetch<{ success: boolean; sAMAccountName: string }>('/users', { method: 'POST', body: JSON.stringify(data) }); }
   getUsers(query?: string, page = 1, pageSize = 50) {
     const params = new URLSearchParams();
     if (query) params.set('q', query);

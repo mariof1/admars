@@ -2,7 +2,7 @@ import { Router, Response, Request } from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
 import { getSettings } from '../config/database.js';
-import { searchUsers, getUser, updateUser, updateUserPhoto, deleteUserPhoto, resetPassword } from '../services/ldap.js';
+import { searchUsers, getUser, updateUser, updateUserPhoto, deleteUserPhoto, resetPassword, createUser } from '../services/ldap.js';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.js';
 
 const router = Router();
@@ -22,6 +22,34 @@ router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
     res.json(result);
   } catch (err: any) {
     console.error('Search users error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create new user (admin only)
+router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const settings = getSettings();
+    if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
+
+    const { sAMAccountName, givenName, sn, displayName, userPrincipalName, mail, password, ou, enabled } = req.body;
+
+    if (!sAMAccountName || !givenName || !sn || !displayName || !userPrincipalName || !password) {
+      res.status(400).json({ error: 'Required fields: sAMAccountName, givenName, sn, displayName, userPrincipalName, password' });
+      return;
+    }
+
+    // Check if user already exists
+    const existing = await getUser(settings, sAMAccountName);
+    if (existing) {
+      res.status(409).json({ error: 'User already exists' });
+      return;
+    }
+
+    await createUser(settings, { sAMAccountName, givenName, sn, displayName, userPrincipalName, mail, password, ou, enabled });
+    res.status(201).json({ success: true, sAMAccountName });
+  } catch (err: any) {
+    console.error('Create user error:', err);
     res.status(500).json({ error: err.message });
   }
 });

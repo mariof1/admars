@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
-import { Search, ChevronLeft, ChevronRight, User, Mail, Building2, Shield, ShieldOff } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, User, Mail, Building2, Shield, ShieldOff, UserPlus, X, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 
 interface AdUser {
   sAMAccountName: string;
@@ -18,6 +18,7 @@ export default function Users() {
   const [users, setUsers] = useState<AdUser[]>([]);
   const [total, setTotal] = useState(0);
   const [query, setQuery] = useState('');
+  const [showAddModal, setShowAddModal] = useState(false);
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -67,9 +68,11 @@ export default function Users() {
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <div className="flex items-center gap-2 text-sm text-gray-500 shrink-0">
-          <User size={16} />
-          <span>{total} user{total !== 1 ? 's' : ''}</span>
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="text-sm text-gray-500 flex items-center gap-1"><User size={16} />{total} user{total !== 1 ? 's' : ''}</span>
+          <button onClick={() => setShowAddModal(true)} className="btn-primary">
+            <UserPlus size={16} /> Add User
+          </button>
         </div>
       </div>
 
@@ -163,6 +166,156 @@ export default function Users() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Add User Modal */}
+      {showAddModal && (
+        <AddUserModal
+          onClose={() => setShowAddModal(false)}
+          onCreated={(username) => {
+            setShowAddModal(false);
+            fetchUsers();
+            navigate(`/users/${username}`);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: (username: string) => void }) {
+  const [form, setForm] = useState({
+    sAMAccountName: '',
+    givenName: '',
+    sn: '',
+    displayName: '',
+    userPrincipalName: '',
+    mail: '',
+    password: '',
+    confirmPassword: '',
+    enabled: true,
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const updateField = (key: string, value: any) => {
+    setForm((f) => {
+      const updated = { ...f, [key]: value };
+      // Auto-fill display name from first + last
+      if (key === 'givenName' || key === 'sn') {
+        const first = key === 'givenName' ? value : f.givenName;
+        const last = key === 'sn' ? value : f.sn;
+        updated.displayName = `${first} ${last}`.trim();
+      }
+      return updated;
+    });
+  };
+
+  const handleSubmit = async () => {
+    setError('');
+    if (!form.sAMAccountName || !form.givenName || !form.sn || !form.password) {
+      setError('Please fill in all required fields');
+      return;
+    }
+    if (form.password !== form.confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+    if (form.password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await api.createUser({
+        sAMAccountName: form.sAMAccountName,
+        givenName: form.givenName,
+        sn: form.sn,
+        displayName: form.displayName,
+        userPrincipalName: form.userPrincipalName || `${form.sAMAccountName}@${window.location.hostname}`,
+        mail: form.mail || undefined,
+        password: form.password,
+        enabled: form.enabled,
+      });
+      onCreated(result.sAMAccountName);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="card w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-lg font-bold flex items-center gap-2"><UserPlus size={20} className="text-brand-600" /> New User</h2>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X size={18} /></button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {error && (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 text-red-700 text-sm border border-red-100">
+              <AlertCircle size={16} className="shrink-0" />{error}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">First Name *</label>
+              <input className="input" value={form.givenName} onChange={(e) => updateField('givenName', e.target.value)} placeholder="John" />
+            </div>
+            <div>
+              <label className="label">Last Name *</label>
+              <input className="input" value={form.sn} onChange={(e) => updateField('sn', e.target.value)} placeholder="Doe" />
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Display Name</label>
+            <input className="input" value={form.displayName} onChange={(e) => updateField('displayName', e.target.value)} />
+          </div>
+
+          <div>
+            <label className="label">Username (sAMAccountName) *</label>
+            <input className="input" value={form.sAMAccountName} onChange={(e) => updateField('sAMAccountName', e.target.value)} placeholder="jdoe" />
+          </div>
+
+          <div>
+            <label className="label">User Principal Name</label>
+            <input className="input" value={form.userPrincipalName} onChange={(e) => updateField('userPrincipalName', e.target.value)} placeholder="jdoe@domain.com" />
+          </div>
+
+          <div>
+            <label className="label">Email</label>
+            <input type="email" className="input" value={form.mail} onChange={(e) => updateField('mail', e.target.value)} placeholder="jdoe@company.com" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Password *</label>
+              <input type="password" className="input" value={form.password} onChange={(e) => updateField('password', e.target.value)} placeholder="Min 8 characters" />
+            </div>
+            <div>
+              <label className="label">Confirm Password *</label>
+              <input type="password" className="input" value={form.confirmPassword} onChange={(e) => updateField('confirmPassword', e.target.value)} />
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={form.enabled} onChange={(e) => updateField('enabled', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
+            <span className="text-sm text-gray-700">Enable account</span>
+          </label>
+        </div>
+
+        <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
+          <button onClick={onClose} className="btn-secondary flex-1">Cancel</button>
+          <button onClick={handleSubmit} disabled={loading} className="btn-primary flex-1">
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+            Create User
+          </button>
+        </div>
       </div>
     </div>
   );
