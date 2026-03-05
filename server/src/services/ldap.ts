@@ -482,23 +482,21 @@ export async function searchOUs(settings: AdSettings): Promise<AdOU[]> {
   try {
     await client.bind(settings.bindDN, settings.bindPassword);
 
-    // Search from domain root for all OUs
-    const domainRoot = settings.baseDN.split(',').filter((p) => p.trim().toUpperCase().startsWith('DC=')).join(',') || settings.baseDN;
-
-    const { searchEntries } = await client.search(domainRoot, {
+    // Search from baseDN so only OUs within the configured scope are returned
+    const { searchEntries } = await client.search(settings.baseDN, {
       filter: '(objectClass=organizationalUnit)',
       scope: 'sub',
       attributes: ['dn', 'ou', 'name', 'description'],
     });
 
-    const domainDepth = domainRoot.split(',').length;
+    const baseDepth = settings.baseDN.split(',').length;
 
     const ous = searchEntries.map((entry) => {
       const dn = entry.dn ?? '';
       const name = String(entry.ou || entry.name || '');
       const desc = entry.description;
       const description = Array.isArray(desc) ? (desc.length > 0 ? String(desc[0]) : '') : String(desc || '');
-      const depth = dn.split(',').length - domainDepth;
+      const depth = dn.split(',').length - baseDepth;
       return { dn, name, description, depth };
     });
 
