@@ -374,6 +374,65 @@ export async function updateUser(settings: AdSettings, dn: string, changes: Reco
   }
 }
 
+export async function setUserEnabled(settings: AdSettings, dn: string, enabled: boolean): Promise<void> {
+  const client = createClient(settings);
+  try {
+    await bindClient(client, settings.bindDN, settings.bindPassword);
+
+    // Read current UAC first
+    const results = await searchLdap(client, dn, {
+      filter: '(objectClass=*)',
+      scope: 'base',
+      attributes: ['userAccountControl'],
+    });
+
+    let uac = 512;
+    if (results.length > 0 && results[0].attributes) {
+      for (const attr of results[0].attributes) {
+        if (attr.type === 'userAccountControl') {
+          uac = parseInt((attr as any).values?.[0]) || 512;
+        }
+      }
+    }
+
+    const UAC_DISABLE = 0x0002;
+    const newUac = enabled ? (uac & ~UAC_DISABLE) : (uac | UAC_DISABLE);
+
+    const change = new ldap.Change({
+      operation: 'replace',
+      modification: new ldap.Attribute({
+        type: 'userAccountControl',
+        values: [String(newUac)],
+      }),
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      client.modify(dn, [change], (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  } finally {
+    try { await unbindClient(client); } catch {}
+  }
+}
+
+export async function deleteUser(settings: AdSettings, dn: string): Promise<void> {
+  const client = createClient(settings);
+  try {
+    await bindClient(client, settings.bindDN, settings.bindPassword);
+
+    await new Promise<void>((resolve, reject) => {
+      client.del(dn, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  } finally {
+    try { await unbindClient(client); } catch {}
+  }
+}
+
 export async function updateUserPhoto(settings: AdSettings, dn: string, photoBuffer: Buffer): Promise<void> {
   const client = createClient(settings);
   try {

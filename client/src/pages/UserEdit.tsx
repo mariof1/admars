@@ -5,7 +5,7 @@ import api from '../api/client';
 import {
   ArrowLeft, Save, Camera, Trash2, Key, Loader2, CheckCircle, AlertCircle,
   User, Mail, Building2, Phone, MapPin, Briefcase, Globe, Hash,
-  Plus, X, Search, Users
+  Plus, X, Search, Users, ShieldOff, ShieldCheck, UserX
 } from 'lucide-react';
 
 interface AdUser {
@@ -319,6 +319,43 @@ export default function UserEdit() {
               <button onClick={() => setShowPwModal(true)} className="btn-secondary w-full">
                 <Key size={16} /> Reset Password
               </button>
+              {isAdmin && (
+                <>
+                  <button
+                    onClick={async () => {
+                      const action = isDisabled ? 'enable' : 'disable';
+                      if (!confirm(`Are you sure you want to ${action} ${user.displayName}?`)) return;
+                      try {
+                        await api.toggleUser(user.sAMAccountName, isDisabled);
+                        const updated = await api.getUser(user.sAMAccountName);
+                        setUser(updated);
+                        setMessage({ type: 'success', text: `Account ${action}d` });
+                        setTimeout(() => setMessage(null), 3000);
+                      } catch (err: any) {
+                        setMessage({ type: 'error', text: err.message });
+                      }
+                    }}
+                    className={`w-full ${isDisabled ? 'btn-secondary' : 'btn-secondary text-amber-600 hover:text-amber-700'}`}
+                  >
+                    {isDisabled ? <><ShieldCheck size={16} /> Enable Account</> : <><ShieldOff size={16} /> Disable Account</>}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`⚠️ Permanently delete ${user.displayName}?\n\nThis cannot be undone.`)) return;
+                      if (!confirm(`Are you really sure? Type this is irreversible.`)) return;
+                      try {
+                        await api.deleteUser(user.sAMAccountName);
+                        navigate('/users');
+                      } catch (err: any) {
+                        setMessage({ type: 'error', text: err.message });
+                      }
+                    }}
+                    className="btn-danger w-full"
+                  >
+                    <UserX size={16} /> Delete User
+                  </button>
+                </>
+              )}
             </div>
           )}
 

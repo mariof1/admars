@@ -2,7 +2,7 @@ import { Router, Response, Request } from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
 import { getSettings } from '../config/database.js';
-import { searchUsers, getUser, updateUser, updateUserPhoto, deleteUserPhoto, resetPassword, createUser, searchGroups, addUserToGroup, removeUserFromGroup } from '../services/ldap.js';
+import { searchUsers, getUser, updateUser, updateUserPhoto, deleteUserPhoto, resetPassword, createUser, searchGroups, addUserToGroup, removeUserFromGroup, setUserEnabled, deleteUser } from '../services/ldap.js';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.js';
 
 const router = Router();
@@ -105,6 +105,52 @@ router.put('/:username', authMiddleware, async (req: AuthRequest, res: Response)
     res.json({ success: true });
   } catch (err: any) {
     console.error('Update user error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Enable/disable user (admin only)
+router.post('/:username/toggle', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const settings = getSettings();
+    if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
+
+    const { enabled } = req.body;
+    if (typeof enabled !== 'boolean') {
+      res.status(400).json({ error: 'enabled (boolean) is required' });
+      return;
+    }
+
+    const user = await getUser(settings, String(req.params.username));
+    if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+    await setUserEnabled(settings, user.dn, enabled);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('Toggle user error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete user (admin only)
+router.delete('/:username', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const settings = getSettings();
+    if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
+
+    const user = await getUser(settings, String(req.params.username));
+    if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+    // Prevent self-deletion
+    if (req.user?.sAMAccountName === user.sAMAccountName) {
+      res.status(400).json({ error: 'Cannot delete your own account' });
+      return;
+    }
+
+    await deleteUser(settings, user.dn);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('Delete user error:', err);
     res.status(500).json({ error: err.message });
   }
 });
