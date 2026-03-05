@@ -1,0 +1,11 @@
+services:
+  admars:
+    build: .
+    ports:
+      - "4000:4000"
+    volumes:
+      - admars-data:/data
+    restart: unless-stopped
+
+volumes:
+  admars-data:

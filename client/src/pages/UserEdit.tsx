@@ -1,0 +1,422 @@
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import api from '../api/client';
+import {
+  ArrowLeft, Save, Camera, Trash2, Key, Loader2, CheckCircle, AlertCircle,
+  User, Mail, Building2, Phone, MapPin, Briefcase, Globe, Hash
+} from 'lucide-react';
+
+interface AdUser {
+  dn: string;
+  sAMAccountName: string;
+  userPrincipalName: string;
+  displayName: string;
+  givenName: string;
+  sn: string;
+  mail: string;
+  title: string;
+  department: string;
+  company: string;
+  manager: string;
+  telephoneNumber: string;
+  mobile: string;
+  streetAddress: string;
+  l: string;
+  st: string;
+  postalCode: string;
+  co: string;
+  physicalDeliveryOfficeName: string;
+  description: string;
+  info: string;
+  employeeID: string;
+  employeeNumber: string;
+  userAccountControl: number;
+  memberOf: string[];
+  thumbnailPhoto?: string;
+  [key: string]: any;
+}
+
+interface FieldDef {
+  key: string;
+  label: string;
+  multiline?: boolean;
+}
+
+// Field definitions for the edit form
+const fieldSections: { title: string; icon: typeof User; fields: FieldDef[] }[] = [
+  {
+    title: 'Identity',
+    icon: User,
+    fields: [
+      { key: 'givenName', label: 'First Name' },
+      { key: 'sn', label: 'Last Name' },
+      { key: 'displayName', label: 'Display Name' },
+      { key: 'userPrincipalName', label: 'User Principal Name' },
+      { key: 'description', label: 'Description' },
+    ],
+  },
+  {
+    title: 'Contact',
+    icon: Mail,
+    fields: [
+      { key: 'mail', label: 'Email' },
+      { key: 'telephoneNumber', label: 'Phone' },
+      { key: 'mobile', label: 'Mobile' },
+      { key: 'facsimileTelephoneNumber', label: 'Fax' },
+      { key: 'ipPhone', label: 'IP Phone' },
+      { key: 'pager', label: 'Pager' },
+      { key: 'wWWHomePage', label: 'Web Page' },
+    ],
+  },
+  {
+    title: 'Organization',
+    icon: Building2,
+    fields: [
+      { key: 'title', label: 'Job Title' },
+      { key: 'department', label: 'Department' },
+      { key: 'company', label: 'Company' },
+      { key: 'manager', label: 'Manager (DN)' },
+      { key: 'physicalDeliveryOfficeName', label: 'Office' },
+    ],
+  },
+  {
+    title: 'Employee',
+    icon: Hash,
+    fields: [
+      { key: 'employeeID', label: 'Employee ID' },
+      { key: 'employeeNumber', label: 'Employee Number' },
+    ],
+  },
+  {
+    title: 'Address',
+    icon: MapPin,
+    fields: [
+      { key: 'streetAddress', label: 'Street Address' },
+      { key: 'l', label: 'City' },
+      { key: 'st', label: 'State/Province' },
+      { key: 'postalCode', label: 'Postal Code' },
+      { key: 'co', label: 'Country' },
+    ],
+  },
+  {
+    title: 'Profile',
+    icon: Globe,
+    fields: [
+      { key: 'homeDrive', label: 'Home Drive' },
+      { key: 'homeDirectory', label: 'Home Directory' },
+      { key: 'scriptPath', label: 'Logon Script' },
+      { key: 'profilePath', label: 'Profile Path' },
+    ],
+  },
+  {
+    title: 'Notes',
+    icon: Briefcase,
+    fields: [
+      { key: 'info', label: 'Notes', multiline: true },
+    ],
+  },
+];
+
+export default function UserEdit() {
+  const { username } = useParams<{ username: string }>();
+  const { user: authUser } = useAuth();
+  const navigate = useNavigate();
+
+  const [user, setUser] = useState<AdUser | null>(null);
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Password reset
+  const [showPwModal, setShowPwModal] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwMessage, setPwMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const isAdmin = authUser?.isAdmin ?? false;
+  const isSelf = authUser?.sAMAccountName === username;
+  const canEdit = isAdmin || isSelf;
+
+  useEffect(() => {
+    if (!username) return;
+    setLoading(true);
+    api.getUser(username)
+      .then((data) => {
+        setUser(data);
+        const formData: Record<string, string> = {};
+        for (const section of fieldSections) {
+          for (const field of section.fields) {
+            formData[field.key] = data[field.key] || '';
+          }
+        }
+        setForm(formData);
+      })
+      .catch((err) => setMessage({ type: 'error', text: err.message }))
+      .finally(() => setLoading(false));
+  }, [username]);
+
+  const handleSave = async () => {
+    if (!username) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      await api.updateUser(username, form);
+      setMessage({ type: 'success', text: 'User updated successfully' });
+      setTimeout(() => setMessage(null), 3000);
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !username) return;
+    try {
+      await api.uploadPhoto(username, file);
+      const data = await api.getUser(username);
+      setUser(data);
+      setMessage({ type: 'success', text: 'Photo updated' });
+      setTimeout(() => setMessage(null), 3000);
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message });
+    }
+  };
+
+  const handlePhotoDelete = async () => {
+    if (!username) return;
+    try {
+      await api.deletePhoto(username);
+      setUser((u) => u ? { ...u, thumbnailPhoto: undefined } : null);
+      setMessage({ type: 'success', text: 'Photo removed' });
+      setTimeout(() => setMessage(null), 3000);
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message });
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    if (newPassword !== confirmPassword) {
+      setPwMessage({ type: 'error', text: 'Passwords do not match' });
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPwMessage({ type: 'error', text: 'Password must be at least 8 characters' });
+      return;
+    }
+    if (!username) return;
+    setPwLoading(true);
+    setPwMessage(null);
+    try {
+      await api.resetPassword(username, newPassword);
+      setPwMessage({ type: 'success', text: 'Password reset successfully' });
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => { setShowPwModal(false); setPwMessage(null); }, 2000);
+    } catch (err: any) {
+      setPwMessage({ type: 'error', text: err.message });
+    } finally {
+      setPwLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-8 h-8 border-3 border-gray-200 border-t-brand-600 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="text-center py-20">
+        <p className="text-gray-500">User not found</p>
+        <button onClick={() => navigate(-1)} className="btn-secondary mt-4"><ArrowLeft size={16} /> Go Back</button>
+      </div>
+    );
+  }
+
+  const UAC_DISABLED = 0x0002;
+  const isDisabled = (user.userAccountControl & UAC_DISABLED) !== 0;
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex items-center gap-4 mb-6">
+        {isAdmin && (
+          <button onClick={() => navigate('/users')} className="btn-ghost p-2"><ArrowLeft size={20} /></button>
+        )}
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold text-gray-900">{user.displayName || user.sAMAccountName}</h1>
+          <p className="text-gray-500 text-sm">{user.sAMAccountName} • {user.userPrincipalName}</p>
+        </div>
+      </div>
+
+      {/* Status message */}
+      {message && (
+        <div className={`flex items-center gap-2 p-3 rounded-lg text-sm border mb-6 ${
+          message.type === 'success' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'
+        }`}>
+          {message.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+          {message.text}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left: Photo & quick info */}
+        <div className="lg:col-span-1 space-y-6">
+          {/* Photo card */}
+          <div className="card p-6">
+            <div className="flex flex-col items-center">
+              <div className="relative group">
+                {user.thumbnailPhoto ? (
+                  <img
+                    src={`data:image/jpeg;base64,${user.thumbnailPhoto}`}
+                    alt={user.displayName}
+                    className="w-32 h-32 rounded-full object-cover ring-4 ring-gray-100 shadow-md"
+                  />
+                ) : (
+                  <div className="w-32 h-32 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center text-4xl font-bold ring-4 ring-gray-100">
+                    {(user.displayName || user.sAMAccountName).charAt(0).toUpperCase()}
+                  </div>
+                )}
+                {canEdit && (
+                  <label className="absolute bottom-0 right-0 w-10 h-10 bg-brand-600 text-white rounded-full flex items-center justify-center cursor-pointer shadow-lg hover:bg-brand-700 transition-colors">
+                    <Camera size={16} />
+                    <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                  </label>
+                )}
+              </div>
+              <h2 className="text-lg font-semibold mt-4">{user.displayName}</h2>
+              <p className="text-sm text-gray-500">{user.title || 'No title'}</p>
+
+              <span className={`mt-3 inline-flex items-center gap-1 text-xs font-medium px-3 py-1 rounded-full ${
+                isDisabled ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'
+              }`}>
+                {isDisabled ? 'Disabled' : 'Active'}
+              </span>
+
+              {canEdit && user.thumbnailPhoto && (
+                <button onClick={handlePhotoDelete} className="btn-ghost text-red-500 hover:text-red-700 mt-3 text-xs">
+                  <Trash2 size={14} /> Remove photo
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Actions card */}
+          {canEdit && (
+            <div className="card p-4 space-y-2">
+              <button onClick={() => setShowPwModal(true)} className="btn-secondary w-full">
+                <Key size={16} /> Reset Password
+              </button>
+            </div>
+          )}
+
+          {/* Groups card */}
+          {user.memberOf.length > 0 && (
+            <div className="card p-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Group Memberships</h3>
+              <div className="space-y-1 max-h-64 overflow-y-auto">
+                {user.memberOf.map((group, i) => {
+                  const cn = group.match(/^CN=([^,]+)/)?.[1] || group;
+                  return (
+                    <div key={i} className="text-xs px-2 py-1.5 rounded bg-gray-50 text-gray-600 truncate" title={group}>
+                      {cn}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Right: Edit form */}
+        <div className="lg:col-span-2 space-y-6">
+          {fieldSections.map(({ title, icon: Icon, fields }) => (
+            <div key={title} className="card">
+              <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-100">
+                <Icon size={18} className="text-brand-600" />
+                <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+              </div>
+              <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {fields.map((field) => (
+                  <div key={field.key} className={field.multiline ? 'sm:col-span-2' : ''}>
+                    <label className="label">{field.label}</label>
+                    {field.multiline ? (
+                      <textarea
+                        className="input min-h-[80px] resize-y"
+                        value={form[field.key] || ''}
+                        onChange={(e) => setForm((f) => ({ ...f, [field.key]: e.target.value }))}
+                        disabled={!canEdit}
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        className="input"
+                        value={form[field.key] || ''}
+                        onChange={(e) => setForm((f) => ({ ...f, [field.key]: e.target.value }))}
+                        disabled={!canEdit}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {/* Save button */}
+          {canEdit && (
+            <div className="flex justify-end">
+              <button onClick={handleSave} disabled={saving} className="btn-primary px-8">
+                {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                Save Changes
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Password Reset Modal */}
+      {showPwModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowPwModal(false)}>
+          <div className="card w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold flex items-center gap-2"><Key size={20} className="text-brand-600" /> Reset Password</h2>
+            <p className="text-sm text-gray-500">Set a new password for <strong>{user.displayName}</strong></p>
+
+            {pwMessage && (
+              <div className={`flex items-center gap-2 p-3 rounded-lg text-sm border ${
+                pwMessage.type === 'success' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'
+              }`}>
+                {pwMessage.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+                {pwMessage.text}
+              </div>
+            )}
+
+            <div>
+              <label className="label">New Password</label>
+              <input type="password" className="input" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Minimum 8 characters" />
+            </div>
+            <div>
+              <label className="label">Confirm Password</label>
+              <input type="password" className="input" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Repeat password" />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setShowPwModal(false)} className="btn-secondary flex-1">Cancel</button>
+              <button onClick={handlePasswordReset} disabled={pwLoading} className="btn-primary flex-1">
+                {pwLoading ? <Loader2 size={16} className="animate-spin" /> : <Key size={16} />}
+                Reset Password
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
