@@ -43,3 +43,12 @@ jobs:
             GIT_COMMIT=${{ github.sha }}
             BUILD_DATE=${{ github.run_started_at }}
           no-cache: true
+
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.DOCKERHUB_USER }}/${{ env.IMAGE_NAME }}
+          short-description: "ADMars - Active Directory user management web app (single container)"
+          readme-filepath: ./docs/docker/admars.md
