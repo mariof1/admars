@@ -49,7 +49,7 @@ class ApiClient {
   getStatus() { return this.fetch<{ configured: boolean }>('/settings/status', { skipAuth: true }); }
   getSettings() { return this.fetch('/settings'); }
   saveSettings(settings: any) { return this.fetch('/settings', { method: 'POST', body: JSON.stringify(settings) }); }
-  testConnection(settings: any) { return this.fetch<{ success: boolean; message: string; userCount?: number }>('/settings/test', { method: 'POST', body: JSON.stringify(settings), skipAuth: true }); }
+  testConnection(settings: any) { return this.fetch<{ success: boolean; message: string; userCount?: number }>('/settings/test', { method: 'POST', body: JSON.stringify(settings) }); }
 
   // Auth
   login(username: string, password: string) { return this.fetch<{ token: string; user: any }>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }), skipAuth: true }); }
