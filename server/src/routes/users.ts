@@ -86,22 +86,19 @@ router.put('/:username', authMiddleware, validateUsername, validateFieldLengths,
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
 
-    // Non-admins can only edit themselves (limited fields)
-    const isSelf = req.user?.sAMAccountName === String(req.params.username);
-    if (!req.user?.isAdmin && !isSelf) {
-      res.status(403).json({ error: 'Access denied' });
+    // Only admins can edit users
+    if (!req.user?.isAdmin) {
+      res.status(403).json({ error: 'Admin access required to edit users' });
       return;
     }
 
     const user = await getUser(settings, String(req.params.username));
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
 
-    const allowedSelfFields = ['telephoneNumber', 'mobile', 'streetAddress', 'l', 'st', 'postalCode', 'co', 'wWWHomePage'];
     const changes: Record<string, string | null> = {};
 
     for (const [key, value] of Object.entries(req.body)) {
       if (key === 'dn' || key === 'sAMAccountName' || key === 'thumbnailPhoto') continue;
-      if (!req.user?.isAdmin && !allowedSelfFields.includes(key)) continue;
       changes[key] = value as string | null;
     }
 
@@ -186,7 +183,7 @@ router.delete('/:username', authMiddleware, adminMiddleware, validateUsername, a
 });
 
 // Upload photo
-router.post('/:username/photo', authMiddleware, validateUsername, upload.single('photo'), async (req: AuthRequest, res: Response) => {
+router.post('/:username/photo', authMiddleware, adminMiddleware, validateUsername, upload.single('photo'), async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
@@ -230,7 +227,7 @@ router.post('/:username/photo', authMiddleware, validateUsername, upload.single(
 });
 
 // Delete photo
-router.delete('/:username/photo', authMiddleware, validateUsername, async (req: AuthRequest, res: Response) => {
+router.delete('/:username/photo', authMiddleware, adminMiddleware, validateUsername, async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
@@ -255,7 +252,7 @@ router.delete('/:username/photo', authMiddleware, validateUsername, async (req: 
 });
 
 // Reset password (admin or self)
-router.post('/:username/password', authMiddleware, validateUsername, async (req: AuthRequest, res: Response) => {
+router.post('/:username/password', authMiddleware, adminMiddleware, validateUsername, async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }

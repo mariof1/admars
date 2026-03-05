@@ -168,7 +168,7 @@ export default function UserEdit() {
 
   const isAdmin = authUser?.isAdmin ?? false;
   const isSelf = authUser?.sAMAccountName === username;
-  const canEdit = isAdmin || isSelf;
+  const canEdit = isAdmin;
 
   useEffect(() => {
     if (!username) return;
