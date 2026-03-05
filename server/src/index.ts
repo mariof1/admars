@@ -37,6 +37,7 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
   hsts: false,
   crossOriginOpenerPolicy: false,
+  originAgentCluster: false,
 }));
 
 // Global rate limit — 200 requests per minute per IP

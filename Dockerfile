@@ -18,7 +18,8 @@ RUN npm run build --workspace=server
 # --- Production ---
 FROM node:20-alpine
 
-RUN addgroup -S admars && adduser -S admars -G admars
+RUN apk add --no-cache su-exec && \
+    addgroup -S admars && adduser -S admars -G admars
 
 WORKDIR /app
 
@@ -29,6 +30,9 @@ COPY --from=builder /app/client/dist ./client/dist
 
 RUN cd server && npm install --omit=dev
 
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 RUN mkdir -p /data && chown admars:admars /data
 
 ENV NODE_ENV=production
@@ -38,6 +42,5 @@ ENV DATA_DIR=/data
 EXPOSE 4000
 VOLUME ["/data"]
 
-USER admars
-
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "server/dist/index.js"]
