@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
 import {
   ArrowLeft, Save, Camera, Trash2, Key, Loader2, CheckCircle, AlertCircle,
-  User, Mail, Building2, Phone, MapPin, Briefcase, Globe, Hash
+  User, Mail, Building2, Phone, MapPin, Briefcase, Globe, Hash,
+  Plus, X, Search, Users
 } from 'lucide-react';
 
 interface AdUser {
@@ -135,6 +136,9 @@ export default function UserEdit() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [pwLoading, setPwLoading] = useState(false);
   const [pwMessage, setPwMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Group management
+  const [showGroupModal, setShowGroupModal] = useState(false);
 
   const isAdmin = authUser?.isAdmin ?? false;
   const isSelf = authUser?.sAMAccountName === username;
@@ -319,21 +323,49 @@ export default function UserEdit() {
           )}
 
           {/* Groups card */}
-          {user.memberOf.length > 0 && (
-            <div className="card p-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Group Memberships</h3>
+          <div className="card p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5"><Users size={14} /> Groups</h3>
+              {isAdmin && (
+                <button onClick={() => setShowGroupModal(true)} className="text-xs text-brand-600 hover:text-brand-700 font-medium flex items-center gap-1">
+                  <Plus size={14} /> Add
+                </button>
+              )}
+            </div>
+            {user.memberOf.length === 0 ? (
+              <p className="text-xs text-gray-400">No group memberships</p>
+            ) : (
               <div className="space-y-1 max-h-64 overflow-y-auto">
                 {user.memberOf.map((group, i) => {
                   const cn = group.match(/^CN=([^,]+)/)?.[1] || group;
                   return (
-                    <div key={i} className="text-xs px-2 py-1.5 rounded bg-gray-50 text-gray-600 truncate" title={group}>
-                      {cn}
+                    <div key={i} className="flex items-center justify-between gap-2 text-xs px-2 py-1.5 rounded bg-gray-50 group/item hover:bg-gray-100 transition-colors" title={group}>
+                      <span className="text-gray-600 truncate">{cn}</span>
+                      {isAdmin && (
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`Remove ${user.displayName} from ${cn}?`)) return;
+                            try {
+                              await api.removeFromGroup(user.sAMAccountName, group);
+                              setUser((u) => u ? { ...u, memberOf: u.memberOf.filter((g) => g !== group) } : null);
+                              setMessage({ type: 'success', text: `Removed from ${cn}` });
+                              setTimeout(() => setMessage(null), 3000);
+                            } catch (err: any) {
+                              setMessage({ type: 'error', text: err.message });
+                            }
+                          }}
+                          className="opacity-0 group-hover/item:opacity-100 text-red-400 hover:text-red-600 shrink-0 transition-opacity"
+                          title={`Remove from ${cn}`}
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
                     </div>
                   );
                 })}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Right: Edit form */}
@@ -417,6 +449,130 @@ export default function UserEdit() {
           </div>
         </div>
       )}
+
+      {/* Add to Group Modal */}
+      {showGroupModal && user && (
+        <AddGroupModal
+          username={user.sAMAccountName}
+          currentGroups={user.memberOf}
+          onClose={() => setShowGroupModal(false)}
+          onAdded={(groupDn) => {
+            setUser((u) => u ? { ...u, memberOf: [...u.memberOf, groupDn] } : null);
+            setMessage({ type: 'success', text: 'Added to group' });
+            setTimeout(() => setMessage(null), 3000);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function AddGroupModal({ username, currentGroups, onClose, onAdded }: {
+  username: string;
+  currentGroups: string[];
+  onClose: () => void;
+  onAdded: (groupDn: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [groups, setGroups] = useState<{ dn: string; cn: string; description: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [adding, setAdding] = useState<string | null>(null);
+  const [error, setError] = useState('');
+
+  const searchGroupsDebounced = useCallback(async (q: string) => {
+    setLoading(true);
+    try {
+      const { groups } = await api.searchGroups(username, q || undefined);
+      // Filter out groups the user is already in
+      const currentLower = new Set(currentGroups.map((g) => g.toLowerCase()));
+      setGroups(groups.filter((g) => !currentLower.has(g.dn.toLowerCase())));
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [username, currentGroups]);
+
+  useEffect(() => {
+    const t = setTimeout(() => searchGroupsDebounced(query), 300);
+    return () => clearTimeout(t);
+  }, [query, searchGroupsDebounced]);
+
+  const handleAdd = async (group: { dn: string; cn: string }) => {
+    setAdding(group.dn);
+    setError('');
+    try {
+      await api.addToGroup(username, group.dn);
+      onAdded(group.dn);
+      setGroups((g) => g.filter((item) => item.dn !== group.dn));
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setAdding(null);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="card w-full max-w-lg max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-lg font-bold flex items-center gap-2"><Users size={20} className="text-brand-600" /> Add to Group</h2>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X size={18} /></button>
+        </div>
+
+        <div className="px-6 py-3 border-b border-gray-100">
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              className="input pl-9"
+              placeholder="Search groups..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              autoFocus
+            />
+          </div>
+        </div>
+
+        {error && (
+          <div className="mx-6 mt-3 flex items-center gap-2 p-3 rounded-lg bg-red-50 text-red-700 text-sm border border-red-100">
+            <AlertCircle size={16} className="shrink-0" />{error}
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto p-3">
+          {loading ? (
+            <div className="flex items-center justify-center py-8 text-gray-400 text-sm gap-2">
+              <Loader2 size={16} className="animate-spin" /> Searching groups...
+            </div>
+          ) : groups.length === 0 ? (
+            <div className="text-center py-8 text-gray-400 text-sm">
+              {query ? 'No matching groups found' : 'Type to search for groups'}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {groups.map((group) => {
+                const isAdding = adding === group.dn;
+                return (
+                  <div key={group.dn} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{group.cn}</p>
+                      {group.description && <p className="text-xs text-gray-500 truncate">{group.description}</p>}
+                    </div>
+                    <button
+                      onClick={() => handleAdd(group)}
+                      disabled={isAdding}
+                      className="btn-primary text-xs px-3 py-1.5 shrink-0"
+                    >
+                      {isAdding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                      Add
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

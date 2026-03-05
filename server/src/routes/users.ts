@@ -2,7 +2,7 @@ import { Router, Response, Request } from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
 import { getSettings } from '../config/database.js';
-import { searchUsers, getUser, updateUser, updateUserPhoto, deleteUserPhoto, resetPassword, createUser } from '../services/ldap.js';
+import { searchUsers, getUser, updateUser, updateUserPhoto, deleteUserPhoto, resetPassword, createUser, searchGroups, addUserToGroup, removeUserFromGroup } from '../services/ldap.js';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.js';
 
 const router = Router();
@@ -188,6 +188,61 @@ router.post('/:username/password', authMiddleware, async (req: AuthRequest, res:
     res.json({ success: true });
   } catch (err: any) {
     console.error('Reset password error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Search groups (admin only)
+router.get('/:username/groups/search', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const settings = getSettings();
+    if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
+
+    const query = req.query.q as string | undefined;
+    const groups = await searchGroups(settings, query || undefined);
+    res.json({ groups });
+  } catch (err: any) {
+    console.error('Search groups error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Add user to group (admin only)
+router.post('/:username/groups', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const settings = getSettings();
+    if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
+
+    const { groupDn } = req.body;
+    if (!groupDn) { res.status(400).json({ error: 'groupDn is required' }); return; }
+
+    const user = await getUser(settings, String(req.params.username));
+    if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+    await addUserToGroup(settings, user.dn, groupDn);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('Add to group error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Remove user from group (admin only)
+router.delete('/:username/groups', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const settings = getSettings();
+    if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
+
+    const { groupDn } = req.body;
+    if (!groupDn) { res.status(400).json({ error: 'groupDn is required' }); return; }
+
+    const user = await getUser(settings, String(req.params.username));
+    if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+    await removeUserFromGroup(settings, user.dn, groupDn);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('Remove from group error:', err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -450,6 +450,97 @@ export async function resetPassword(settings: AdSettings, dn: string, newPasswor
   }
 }
 
+export interface AdGroup {
+  dn: string;
+  cn: string;
+  description: string;
+}
+
+export async function searchGroups(settings: AdSettings, query?: string): Promise<AdGroup[]> {
+  const client = createClient(settings);
+  try {
+    await bindClient(client, settings.bindDN, settings.bindPassword);
+
+    let filter = '(objectClass=group)';
+    if (query) {
+      const q = ldapEscape(query);
+      filter = `(&(objectClass=group)(|(cn=*${q}*)(description=*${q}*)))`;
+    }
+
+    const results = await searchLdap(client, settings.baseDN, {
+      filter,
+      scope: 'sub',
+      attributes: ['dn', 'cn', 'description'],
+      paged: true,
+    });
+
+    return results.map((entry) => {
+      const attrs: Record<string, any> = {};
+      if (entry.attributes) {
+        for (const attr of entry.attributes) {
+          const vals = (attr as any).values || [];
+          attrs[attr.type] = vals.length === 1 ? vals[0] : vals;
+        }
+      }
+      return {
+        dn: entry.dn?.toString() ?? '',
+        cn: attrs['cn'] || '',
+        description: Array.isArray(attrs['description']) ? attrs['description'][0] : (attrs['description'] || ''),
+      };
+    });
+  } finally {
+    try { await unbindClient(client); } catch {}
+  }
+}
+
+export async function addUserToGroup(settings: AdSettings, userDn: string, groupDn: string): Promise<void> {
+  const client = createClient(settings);
+  try {
+    await bindClient(client, settings.bindDN, settings.bindPassword);
+
+    const change = new ldap.Change({
+      operation: 'add',
+      modification: new ldap.Attribute({
+        type: 'member',
+        values: [userDn],
+      }),
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      client.modify(groupDn, [change], (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  } finally {
+    try { await unbindClient(client); } catch {}
+  }
+}
+
+export async function removeUserFromGroup(settings: AdSettings, userDn: string, groupDn: string): Promise<void> {
+  const client = createClient(settings);
+  try {
+    await bindClient(client, settings.bindDN, settings.bindPassword);
+
+    const change = new ldap.Change({
+      operation: 'delete',
+      modification: new ldap.Attribute({
+        type: 'member',
+        values: [userDn],
+      }),
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      client.modify(groupDn, [change], (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  } finally {
+    try { await unbindClient(client); } catch {}
+  }
+}
+
 export async function testConnection(settings: AdSettings): Promise<{ success: boolean; message: string; userCount?: number }> {
   const client = createClient(settings);
   try {

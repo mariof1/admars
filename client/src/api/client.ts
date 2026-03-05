@@ -74,6 +74,15 @@ class ApiClient {
   }
   deletePhoto(username: string) { return this.fetch(`/users/${username}/photo`, { method: 'DELETE' }); }
   resetPassword(username: string, newPassword: string) { return this.fetch(`/users/${username}/password`, { method: 'POST', body: JSON.stringify({ newPassword }) }); }
+
+  // Groups
+  searchGroups(username: string, query?: string) {
+    const params = new URLSearchParams();
+    if (query) params.set('q', query);
+    return this.fetch<{ groups: { dn: string; cn: string; description: string }[] }>(`/users/${username}/groups/search?${params}`);
+  }
+  addToGroup(username: string, groupDn: string) { return this.fetch(`/users/${username}/groups`, { method: 'POST', body: JSON.stringify({ groupDn }) }); }
+  removeFromGroup(username: string, groupDn: string) { return this.fetch(`/users/${username}/groups`, { method: 'DELETE', body: JSON.stringify({ groupDn }) }); }
 }
 
 export const api = new ApiClient();
