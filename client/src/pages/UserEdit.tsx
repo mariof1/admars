@@ -46,6 +46,7 @@ interface FieldDef {
   key: string;
   label: string;
   multiline?: boolean;
+  type?: 'text' | 'manager';
 }
 
 // Field definitions for the edit form
@@ -81,7 +82,7 @@ const fieldSections: { title: string; icon: typeof User; fields: FieldDef[] }[] 
       { key: 'title', label: 'Job Title' },
       { key: 'department', label: 'Department' },
       { key: 'company', label: 'Company' },
-      { key: 'manager', label: 'Manager (DN)' },
+      { key: 'manager', label: 'Manager', type: 'manager' },
       { key: 'physicalDeliveryOfficeName', label: 'Office' },
     ],
   },
@@ -166,11 +167,35 @@ export default function UserEdit() {
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
   const [cropUploading, setCropUploading] = useState(false);
 
+  // Manager picker
+  const [managerSearch, setManagerSearch] = useState('');
+  const [managerResults, setManagerResults] = useState<{ sAMAccountName: string; displayName: string; dn: string }[]>([]);
+  const [managerSearching, setManagerSearching] = useState(false);
+  const [showManagerPicker, setShowManagerPicker] = useState(false);
+
   const isAdmin = authUser?.isAdmin ?? false;
   const isSelf = authUser?.sAMAccountName === username;
   const canEdit = isAdmin;
   const canEditPhoto = isAdmin || isSelf;
   const canResetPassword = isAdmin || isSelf;
+
+  // Extract display name from DN: "CN=Mariusz Faldasz,OU=..." → "Mariusz Faldasz"
+  const dnToName = (dn: string): string => {
+    if (!dn) return '';
+    const match = dn.match(/^CN=([^,]+)/i);
+    return match ? match[1] : dn;
+  };
+
+  const handleManagerSearch = useCallback(async (q: string) => {
+    setManagerSearch(q);
+    if (q.length < 2) { setManagerResults([]); return; }
+    setManagerSearching(true);
+    try {
+      const { users } = await api.getUsers(q, 1, 10);
+      setManagerResults(users.map((u: any) => ({ sAMAccountName: u.sAMAccountName, displayName: u.displayName, dn: u.dn })));
+    } catch { setManagerResults([]); }
+    finally { setManagerSearching(false); }
+  }, []);
 
   useEffect(() => {
     if (!username) return;
@@ -503,7 +528,64 @@ export default function UserEdit() {
                 {fields.map((field) => (
                   <div key={field.key} className={field.multiline ? 'sm:col-span-2' : ''}>
                     <label className="label">{field.label}</label>
-                    {field.multiline ? (
+                    {field.type === 'manager' ? (
+                      <div className="relative">
+                        {form[field.key] ? (
+                          <div className="input flex items-center justify-between gap-2 bg-gray-50">
+                            <span className="text-sm font-medium text-gray-900">{dnToName(form[field.key])}</span>
+                            {canEdit && (
+                              <button
+                                type="button"
+                                onClick={() => setForm((f) => ({ ...f, [field.key]: '' }))}
+                                className="text-gray-400 hover:text-red-500 transition-colors"
+                              >
+                                <X size={14} />
+                              </button>
+                            )}
+                          </div>
+                        ) : canEdit ? (
+                          <div>
+                            <div className="relative">
+                              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                              <input
+                                type="text"
+                                className="input pl-9"
+                                placeholder="Search users..."
+                                value={managerSearch}
+                                onChange={(e) => { handleManagerSearch(e.target.value); setShowManagerPicker(true); }}
+                                onFocus={() => setShowManagerPicker(true)}
+                                onBlur={() => setTimeout(() => setShowManagerPicker(false), 200)}
+                              />
+                              {managerSearching && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-400" />}
+                            </div>
+                            {showManagerPicker && managerResults.length > 0 && (
+                              <div className="absolute z-10 mt-1 w-full bg-white rounded-lg shadow-lg border border-gray-200 max-h-48 overflow-y-auto">
+                                {managerResults.map((u) => (
+                                  <button
+                                    key={u.dn}
+                                    type="button"
+                                    className="w-full text-left px-4 py-2 hover:bg-brand-50 text-sm flex items-center gap-2 transition-colors"
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => {
+                                      setForm((f) => ({ ...f, [field.key]: u.dn }));
+                                      setManagerSearch('');
+                                      setManagerResults([]);
+                                      setShowManagerPicker(false);
+                                    }}
+                                  >
+                                    <User size={14} className="text-gray-400" />
+                                    <span className="font-medium">{u.displayName}</span>
+                                    <span className="text-gray-400 text-xs ml-auto">{u.sAMAccountName}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <input type="text" className="input" value="" disabled />
+                        )}
+                      </div>
+                    ) : field.multiline ? (
                       <textarea
                         className="input min-h-[80px] resize-y"
                         value={form[field.key] || ''}
