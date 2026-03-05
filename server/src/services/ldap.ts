@@ -1,4 +1,4 @@
-import ldap, { Client, SearchOptions } from 'ldapjs';
+import { Client, Change, Attribute } from 'ldapts';
 import { AdSettings } from '../config/database.js';
 
 export interface AdUser {
@@ -46,72 +46,41 @@ const AD_USER_ATTRIBUTES = [
 ];
 
 function createClient(settings: AdSettings): Client {
-  const opts: ldap.ClientOptions = {
+  return new Client({
     url: settings.url,
     tlsOptions: {
       rejectUnauthorized: false,
     },
     connectTimeout: 10000,
     timeout: 10000,
+  });
+}
+
+function parseEntry(entry: Record<string, any>): AdUser {
+  const get = (key: string): any => {
+    const v = entry[key];
+    if (v === undefined || v === null) return '';
+    if (Array.isArray(v)) return v.length === 1 ? v[0] : v;
+    return v;
   };
-  return ldap.createClient(opts);
-}
-
-function bindClient(client: Client, dn: string, password: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    client.bind(dn, password, (err) => {
-      if (err) reject(err);
-      else resolve();
-    });
-  });
-}
-
-function unbindClient(client: Client): Promise<void> {
-  return new Promise((resolve) => {
-    client.unbind((err) => resolve());
-  });
-}
-
-function searchLdap(client: Client, baseDN: string, opts: SearchOptions): Promise<ldap.SearchEntry[]> {
-  return new Promise((resolve, reject) => {
-    const entries: ldap.SearchEntry[] = [];
-    client.search(baseDN, opts, (err, res) => {
-      if (err) return reject(err);
-      res.on('searchEntry', (entry) => entries.push(entry));
-      res.on('error', (err) => reject(err));
-      res.on('end', () => resolve(entries));
-    });
-  });
-}
-
-function parseEntry(entry: ldap.SearchEntry): AdUser {
-  const obj = (entry as any).ppiObject || (entry as any).object || {};
-  const attrs: Record<string, any> = {};
-
-  if (entry.attributes) {
-    for (const attr of entry.attributes) {
-      const name = attr.type;
-      if (name === 'thumbnailPhoto') {
-        const buffers = (attr as any).buffers;
-        if (buffers && buffers.length > 0) {
-          attrs[name] = buffers[0].toString('base64');
-        }
-      } else {
-        const vals = (attr as any).values || [];
-        attrs[name] = vals.length === 1 ? vals[0] : vals;
-      }
-    }
-  }
-
-  const get = (key: string): any => attrs[key] ?? obj[key] ?? '';
   const getArr = (key: string): string[] => {
-    const v = attrs[key] ?? obj[key];
+    const v = entry[key];
     if (!v) return [];
     return Array.isArray(v) ? v : [v];
   };
 
+  let thumbnailPhoto: string | undefined;
+  if (entry.thumbnailPhoto) {
+    const photo = entry.thumbnailPhoto;
+    if (Buffer.isBuffer(photo)) {
+      thumbnailPhoto = photo.toString('base64');
+    } else if (typeof photo === 'string') {
+      thumbnailPhoto = photo;
+    }
+  }
+
   return {
-    dn: entry.dn?.toString() ?? obj.dn ?? '',
+    dn: entry.dn ?? '',
     sAMAccountName: get('sAMAccountName'),
     userPrincipalName: get('userPrincipalName'),
     displayName: get('displayName'),
@@ -141,7 +110,7 @@ function parseEntry(entry: ldap.SearchEntry): AdUser {
     whenChanged: get('whenChanged'),
     lastLogon: get('lastLogon'),
     memberOf: getArr('memberOf'),
-    thumbnailPhoto: attrs['thumbnailPhoto'] || undefined,
+    thumbnailPhoto,
   };
 }
 
@@ -149,35 +118,35 @@ export async function authenticate(settings: AdSettings, username: string, passw
   const client = createClient(settings);
   try {
     // First bind with service account to find user DN
-    await bindClient(client, settings.bindDN, settings.bindPassword);
+    await client.bind(settings.bindDN, settings.bindPassword);
 
     const filter = `(&(objectClass=user)(objectCategory=person)(|(sAMAccountName=${ldapEscape(username)})(userPrincipalName=${ldapEscape(username)})))`;
-    const results = await searchLdap(client, settings.baseDN, {
+    const { searchEntries } = await client.search(settings.baseDN, {
       filter,
       scope: 'sub',
       attributes: AD_USER_ATTRIBUTES,
     });
 
-    if (results.length === 0) return null;
+    if (searchEntries.length === 0) return null;
 
-    const userEntry = results[0];
-    const userDn = userEntry.dn?.toString();
+    const userEntry = searchEntries[0];
+    const userDn = userEntry.dn;
     if (!userDn) return null;
 
-    await unbindClient(client);
+    await client.unbind();
 
     // Re-bind as the user to verify password
     const userClient = createClient(settings);
     try {
-      await bindClient(userClient, userDn, password);
-      await unbindClient(userClient);
+      await userClient.bind(userDn, password);
+      await userClient.unbind();
     } catch {
       return null;
     }
 
     return parseEntry(userEntry);
   } finally {
-    try { await unbindClient(client); } catch {}
+    try { await client.unbind(); } catch {}
   }
 }
 
@@ -190,7 +159,7 @@ export async function isAdmin(settings: AdSettings, user: AdUser): Promise<boole
 export async function searchUsers(settings: AdSettings, query?: string, page = 1, pageSize = 50): Promise<{ users: AdUser[]; total: number }> {
   const client = createClient(settings);
   try {
-    await bindClient(client, settings.bindDN, settings.bindPassword);
+    await client.bind(settings.bindDN, settings.bindPassword);
 
     let filter = '(&(objectClass=user)(objectCategory=person))';
     if (query) {
@@ -198,39 +167,39 @@ export async function searchUsers(settings: AdSettings, query?: string, page = 1
       filter = `(&(objectClass=user)(objectCategory=person)(|(sAMAccountName=*${q}*)(displayName=*${q}*)(mail=*${q}*)(givenName=*${q}*)(sn=*${q}*)(department=*${q}*)(title=*${q}*)))`;
     }
 
-    const results = await searchLdap(client, settings.baseDN, {
+    const { searchEntries } = await client.search(settings.baseDN, {
       filter,
       scope: 'sub',
       attributes: AD_USER_ATTRIBUTES,
       paged: true,
     });
 
-    const total = results.length;
+    const total = searchEntries.length;
     const start = (page - 1) * pageSize;
-    const paged = results.slice(start, start + pageSize);
+    const paged = searchEntries.slice(start, start + pageSize);
 
     return { users: paged.map(parseEntry), total };
   } finally {
-    try { await unbindClient(client); } catch {}
+    try { await client.unbind(); } catch {}
   }
 }
 
 export async function getUser(settings: AdSettings, sAMAccountName: string): Promise<AdUser | null> {
   const client = createClient(settings);
   try {
-    await bindClient(client, settings.bindDN, settings.bindPassword);
+    await client.bind(settings.bindDN, settings.bindPassword);
 
     const filter = `(&(objectClass=user)(objectCategory=person)(sAMAccountName=${ldapEscape(sAMAccountName)}))`;
-    const results = await searchLdap(client, settings.baseDN, {
+    const { searchEntries } = await client.search(settings.baseDN, {
       filter,
       scope: 'sub',
       attributes: AD_USER_ATTRIBUTES,
     });
 
-    if (results.length === 0) return null;
-    return parseEntry(results[0]);
+    if (searchEntries.length === 0) return null;
+    return parseEntry(searchEntries[0]);
   } finally {
-    try { await unbindClient(client); } catch {}
+    try { await client.unbind(); } catch {}
   }
 }
 
@@ -249,7 +218,7 @@ export interface CreateUserInput {
 export async function createUser(settings: AdSettings, input: CreateUserInput): Promise<void> {
   const client = createClient(settings);
   try {
-    await bindClient(client, settings.bindDN, settings.bindPassword);
+    await client.bind(settings.bindDN, settings.bindPassword);
 
     const ou = input.ou || settings.baseDN;
     const dn = `CN=${input.displayName},${ou}`;
@@ -268,59 +237,44 @@ export async function createUser(settings: AdSettings, input: CreateUserInput): 
 
     if (input.mail) entry.mail = input.mail;
 
-    await new Promise<void>((resolve, reject) => {
-      client.add(dn, entry, (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    await client.add(dn, entry);
 
     // Try to set password and enable account
     try {
       const quotedPassword = `"${input.password}"`;
       const passwordBuffer = Buffer.from(quotedPassword, 'utf16le');
-      const pwChange = new ldap.Change({
+      const pwChange = new Change({
         operation: 'replace',
-        modification: new ldap.Attribute({
+        modification: new Attribute({
           type: 'unicodePwd',
-          vals: [passwordBuffer],
-        } as any),
+          values: [passwordBuffer],
+        }),
       });
-      await new Promise<void>((resolve, reject) => {
-        client.modify(dn, [pwChange], (err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
+      await client.modify(dn, [pwChange]);
 
       // Password set succeeded — now set final UAC (512=enabled, 514=disabled)
       const finalUac = input.enabled !== false ? '512' : '514';
-      const uacChange = new ldap.Change({
+      const uacChange = new Change({
         operation: 'replace',
-        modification: new ldap.Attribute({
+        modification: new Attribute({
           type: 'userAccountControl',
           values: [finalUac],
         }),
       });
-      await new Promise<void>((resolve, reject) => {
-        client.modify(dn, [uacChange], (err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
+      await client.modify(dn, [uacChange]);
     } catch (pwErr: any) {
       // Over plain LDAP, password set fails — leave account disabled (544) for safety
       console.warn('User created but password could not be set (requires LDAPS):', pwErr.message);
     }
   } finally {
-    try { await unbindClient(client); } catch {}
+    try { await client.unbind(); } catch {}
   }
 }
 
 export async function updateUser(settings: AdSettings, dn: string, changes: Record<string, string | string[] | null>, currentUser?: AdUser): Promise<void> {
   const client = createClient(settings);
   try {
-    await bindClient(client, settings.bindDN, settings.bindPassword);
+    await client.bind(settings.bindDN, settings.bindPassword);
 
     const readonlyFields = ['dn', 'thumbnailPhoto', 'sAMAccountName', 'objectClass', 'whenCreated', 'whenChanged', 'lastLogon', 'memberOf', 'userAccountControl'];
     const errors: string[] = [];
@@ -334,18 +288,18 @@ export async function updateUser(settings: AdSettings, dn: string, changes: Reco
       // Skip clearing attributes that are already empty
       if (isEmpty && !hadValue) continue;
 
-      let modification: ldap.Change;
+      let modification: Change;
       if (isEmpty && hadValue) {
         // Delete existing value
-        modification = new ldap.Change({
+        modification = new Change({
           operation: 'delete',
-          modification: new ldap.Attribute({ type: key, values: [] }),
+          modification: new Attribute({ type: key, values: [] }),
         });
       } else if (!isEmpty) {
         // Replace (works for both new and existing values)
-        modification = new ldap.Change({
+        modification = new Change({
           operation: 'replace',
-          modification: new ldap.Attribute({
+          modification: new Attribute({
             type: key,
             values: Array.isArray(value) ? value : [value!],
           }),
@@ -356,12 +310,7 @@ export async function updateUser(settings: AdSettings, dn: string, changes: Reco
 
       // Apply each change individually so one failure doesn't block the rest
       try {
-        await new Promise<void>((resolve, reject) => {
-          client.modify(dn, [modification], (err) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        });
+        await client.modify(dn, [modification]);
       } catch (err: any) {
         console.warn(`Failed to update ${key}: ${err.message}`);
         errors.push(`${key}: ${err.message}`);
@@ -372,166 +321,135 @@ export async function updateUser(settings: AdSettings, dn: string, changes: Reco
       throw new Error(`Some fields failed to update: ${errors.join('; ')}`);
     }
   } finally {
-    try { await unbindClient(client); } catch {}
+    try { await client.unbind(); } catch {}
   }
 }
 
 export async function setUserEnabled(settings: AdSettings, dn: string, enabled: boolean): Promise<void> {
   const client = createClient(settings);
   try {
-    await bindClient(client, settings.bindDN, settings.bindPassword);
+    await client.bind(settings.bindDN, settings.bindPassword);
 
     // Read current UAC first
-    const results = await searchLdap(client, dn, {
+    const { searchEntries } = await client.search(dn, {
       filter: '(objectClass=*)',
       scope: 'base',
       attributes: ['userAccountControl'],
     });
 
     let uac = 512;
-    if (results.length > 0 && results[0].attributes) {
-      for (const attr of results[0].attributes) {
-        if (attr.type === 'userAccountControl') {
-          uac = parseInt((attr as any).values?.[0]) || 512;
-        }
+    if (searchEntries.length > 0) {
+      const val = searchEntries[0].userAccountControl;
+      if (val !== undefined) {
+        uac = parseInt(String(val)) || 512;
       }
     }
 
     const UAC_DISABLE = 0x0002;
     const newUac = enabled ? (uac & ~UAC_DISABLE) : (uac | UAC_DISABLE);
 
-    const change = new ldap.Change({
+    const change = new Change({
       operation: 'replace',
-      modification: new ldap.Attribute({
+      modification: new Attribute({
         type: 'userAccountControl',
         values: [String(newUac)],
       }),
     });
 
-    await new Promise<void>((resolve, reject) => {
-      client.modify(dn, [change], (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    await client.modify(dn, [change]);
   } finally {
-    try { await unbindClient(client); } catch {}
+    try { await client.unbind(); } catch {}
   }
 }
 
 export async function unlockUser(settings: AdSettings, dn: string): Promise<void> {
   const client = createClient(settings);
   try {
-    await bindClient(client, settings.bindDN, settings.bindPassword);
+    await client.bind(settings.bindDN, settings.bindPassword);
 
-    const change = new ldap.Change({
+    const change = new Change({
       operation: 'replace',
-      modification: new ldap.Attribute({
+      modification: new Attribute({
         type: 'lockoutTime',
         values: ['0'],
       }),
     });
 
-    await new Promise<void>((resolve, reject) => {
-      client.modify(dn, [change], (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    await client.modify(dn, [change]);
   } finally {
-    try { await unbindClient(client); } catch {}
+    try { await client.unbind(); } catch {}
   }
 }
 
 export async function deleteUser(settings: AdSettings, dn: string): Promise<void> {
   const client = createClient(settings);
   try {
-    await bindClient(client, settings.bindDN, settings.bindPassword);
+    await client.bind(settings.bindDN, settings.bindPassword);
 
-    await new Promise<void>((resolve, reject) => {
-      client.del(dn, (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    await client.del(dn);
   } finally {
-    try { await unbindClient(client); } catch {}
+    try { await client.unbind(); } catch {}
   }
 }
 
 export async function updateUserPhoto(settings: AdSettings, dn: string, photoBuffer: Buffer): Promise<void> {
   const client = createClient(settings);
   try {
-    await bindClient(client, settings.bindDN, settings.bindPassword);
+    await client.bind(settings.bindDN, settings.bindPassword);
 
-    const change = new ldap.Change({
+    const change = new Change({
       operation: 'replace',
-      modification: new ldap.Attribute({
+      modification: new Attribute({
         type: 'thumbnailPhoto',
-        vals: [photoBuffer],
-      } as any),
+        values: [photoBuffer],
+      }),
     });
 
-    await new Promise<void>((resolve, reject) => {
-      client.modify(dn, [change], (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    await client.modify(dn, [change]);
   } finally {
-    try { await unbindClient(client); } catch {}
+    try { await client.unbind(); } catch {}
   }
 }
 
 export async function deleteUserPhoto(settings: AdSettings, dn: string): Promise<void> {
   const client = createClient(settings);
   try {
-    await bindClient(client, settings.bindDN, settings.bindPassword);
+    await client.bind(settings.bindDN, settings.bindPassword);
 
-    const change = new ldap.Change({
+    const change = new Change({
       operation: 'delete',
-      modification: new ldap.Attribute({
+      modification: new Attribute({
         type: 'thumbnailPhoto',
         values: [],
       }),
     });
 
-    await new Promise<void>((resolve, reject) => {
-      client.modify(dn, [change], (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    await client.modify(dn, [change]);
   } finally {
-    try { await unbindClient(client); } catch {}
+    try { await client.unbind(); } catch {}
   }
 }
 
 export async function resetPassword(settings: AdSettings, dn: string, newPassword: string): Promise<void> {
   const client = createClient(settings);
   try {
-    await bindClient(client, settings.bindDN, settings.bindPassword);
+    await client.bind(settings.bindDN, settings.bindPassword);
 
     // AD requires password as UTF-16LE encoded, surrounded by quotes
     const quotedPassword = `"${newPassword}"`;
     const passwordBuffer = Buffer.from(quotedPassword, 'utf16le');
 
-    const change = new ldap.Change({
+    const change = new Change({
       operation: 'replace',
-      modification: new ldap.Attribute({
+      modification: new Attribute({
         type: 'unicodePwd',
-        vals: [passwordBuffer],
-      } as any),
+        values: [passwordBuffer],
+      }),
     });
 
-    await new Promise<void>((resolve, reject) => {
-      client.modify(dn, [change], (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    await client.modify(dn, [change]);
   } finally {
-    try { await unbindClient(client); } catch {}
+    try { await client.unbind(); } catch {}
   }
 }
 
@@ -544,7 +462,7 @@ export interface AdGroup {
 export async function searchGroups(settings: AdSettings, query?: string): Promise<AdGroup[]> {
   const client = createClient(settings);
   try {
-    await bindClient(client, settings.bindDN, settings.bindPassword);
+    await client.bind(settings.bindDN, settings.bindPassword);
 
     let filter = '(objectClass=group)';
     if (query) {
@@ -555,7 +473,7 @@ export async function searchGroups(settings: AdSettings, query?: string): Promis
     // Search from domain root (DC=...) since groups may be outside the configured user OU
     const domainRoot = settings.baseDN.split(',').filter((p) => p.trim().toUpperCase().startsWith('DC=')).join(',') || settings.baseDN;
 
-    const results = await searchLdap(client, domainRoot, {
+    const { searchEntries } = await client.search(domainRoot, {
       filter,
       scope: 'sub',
       attributes: ['dn', 'cn', 'description', 'groupType'],
@@ -587,19 +505,14 @@ export async function searchGroups(settings: AdSettings, query?: string): Promis
     // Container DNs for built-in groups
     const HIDDEN_CONTAINERS = ['cn=builtin,', 'cn=foreignsecurityprincipals,'];
 
-    return results.map((entry) => {
-      const attrs: Record<string, any> = {};
-      if (entry.attributes) {
-        for (const attr of entry.attributes) {
-          const vals = (attr as any).values || [];
-          attrs[attr.type] = vals.length === 1 ? vals[0] : vals;
-        }
-      }
+    return searchEntries.map((entry) => {
+      const cn = entry.cn;
+      const desc = entry.description;
       return {
-        dn: entry.dn?.toString() ?? '',
-        cn: attrs['cn'] || '',
-        description: Array.isArray(attrs['description']) ? attrs['description'][0] : (attrs['description'] || ''),
-      };
+        dn: entry.dn ?? '',
+        cn: (Array.isArray(cn) ? cn[0] : cn) || '',
+        description: Array.isArray(desc) ? desc[0] : (desc || ''),
+      } as AdGroup;
     }).filter((g) => {
       const cnLower = g.cn.toLowerCase();
       const dnLower = g.dn.toLowerCase();
@@ -608,75 +521,65 @@ export async function searchGroups(settings: AdSettings, query?: string): Promis
       return true;
     });
   } finally {
-    try { await unbindClient(client); } catch {}
+    try { await client.unbind(); } catch {}
   }
 }
 
 export async function addUserToGroup(settings: AdSettings, userDn: string, groupDn: string): Promise<void> {
   const client = createClient(settings);
   try {
-    await bindClient(client, settings.bindDN, settings.bindPassword);
+    await client.bind(settings.bindDN, settings.bindPassword);
 
-    const change = new ldap.Change({
+    const change = new Change({
       operation: 'add',
-      modification: new ldap.Attribute({
+      modification: new Attribute({
         type: 'member',
         values: [userDn],
       }),
     });
 
-    await new Promise<void>((resolve, reject) => {
-      client.modify(groupDn, [change], (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    await client.modify(groupDn, [change]);
   } finally {
-    try { await unbindClient(client); } catch {}
+    try { await client.unbind(); } catch {}
   }
 }
 
 export async function removeUserFromGroup(settings: AdSettings, userDn: string, groupDn: string): Promise<void> {
   const client = createClient(settings);
   try {
-    await bindClient(client, settings.bindDN, settings.bindPassword);
+    await client.bind(settings.bindDN, settings.bindPassword);
 
-    const change = new ldap.Change({
+    const change = new Change({
       operation: 'delete',
-      modification: new ldap.Attribute({
+      modification: new Attribute({
         type: 'member',
         values: [userDn],
       }),
     });
 
-    await new Promise<void>((resolve, reject) => {
-      client.modify(groupDn, [change], (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    await client.modify(groupDn, [change]);
   } finally {
-    try { await unbindClient(client); } catch {}
+    try { await client.unbind(); } catch {}
   }
 }
 
 export async function testConnection(settings: AdSettings): Promise<{ success: boolean; message: string; userCount?: number }> {
   const client = createClient(settings);
   try {
-    await bindClient(client, settings.bindDN, settings.bindPassword);
+    await client.bind(settings.bindDN, settings.bindPassword);
 
-    const results = await searchLdap(client, settings.baseDN, {
+    const { searchEntries } = await client.search(settings.baseDN, {
       filter: '(&(objectClass=user)(objectCategory=person))',
       scope: 'sub',
       attributes: ['sAMAccountName'],
       paged: true,
     });
 
-    return { success: true, message: `Connected successfully. Found ${results.length} user(s).`, userCount: results.length };
+    return { success: true, message: `Connected successfully. Found ${searchEntries.length} user(s).`, userCount: searchEntries.length };
   } catch (err: any) {
     return { success: false, message: err.message || 'Connection failed' };
   } finally {
-    try { await unbindClient(client); } catch {}
+    try { await client.unbind(); } catch {}
   }
 }
 
