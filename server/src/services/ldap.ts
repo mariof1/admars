@@ -467,7 +467,10 @@ export async function searchGroups(settings: AdSettings, query?: string): Promis
       filter = `(&(objectClass=group)(|(cn=*${q}*)(description=*${q}*)))`;
     }
 
-    const results = await searchLdap(client, settings.baseDN, {
+    // Search from domain root (DC=...) since groups may be outside the configured user OU
+    const domainRoot = settings.baseDN.split(',').filter((p) => p.trim().toUpperCase().startsWith('DC=')).join(',') || settings.baseDN;
+
+    const results = await searchLdap(client, domainRoot, {
       filter,
       scope: 'sub',
       attributes: ['dn', 'cn', 'description'],
