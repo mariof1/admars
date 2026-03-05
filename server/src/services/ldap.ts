@@ -558,9 +558,34 @@ export async function searchGroups(settings: AdSettings, query?: string): Promis
     const results = await searchLdap(client, domainRoot, {
       filter,
       scope: 'sub',
-      attributes: ['dn', 'cn', 'description'],
+      attributes: ['dn', 'cn', 'description', 'groupType'],
       paged: true,
     });
+
+    // Built-in / system groups to hide from the UI
+    const HIDDEN_GROUPS = new Set([
+      'domain controllers',
+      'domain computers',
+      'domain guests',
+      'domain users',
+      'enterprise admins',
+      'enterprise key admins',
+      'key admins',
+      'schema admins',
+      'group policy creator owners',
+      'cert publishers',
+      'ras and ias servers',
+      'dnsadmins',
+      'dnsupdateproxy',
+      'read-only domain controllers',
+      'enterprise read-only domain controllers',
+      'cloneable domain controllers',
+      'protected users',
+      'allowed rodc password replication group',
+      'denied rodc password replication group',
+    ]);
+    // Container DNs for built-in groups
+    const HIDDEN_CONTAINERS = ['cn=builtin,', 'cn=foreignsecurityprincipals,'];
 
     return results.map((entry) => {
       const attrs: Record<string, any> = {};
@@ -575,6 +600,12 @@ export async function searchGroups(settings: AdSettings, query?: string): Promis
         cn: attrs['cn'] || '',
         description: Array.isArray(attrs['description']) ? attrs['description'][0] : (attrs['description'] || ''),
       };
+    }).filter((g) => {
+      const cnLower = g.cn.toLowerCase();
+      const dnLower = g.dn.toLowerCase();
+      if (HIDDEN_GROUPS.has(cnLower)) return false;
+      if (HIDDEN_CONTAINERS.some((c) => dnLower.includes(c))) return false;
+      return true;
     });
   } finally {
     try { await unbindClient(client); } catch {}
