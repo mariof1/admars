@@ -141,6 +141,20 @@ export default function UserEdit() {
   // Group management
   const [showGroupModal, setShowGroupModal] = useState(false);
 
+  // Confirmation modal
+  const [confirmModal, setConfirmModal] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    variant?: 'danger' | 'warning' | 'default';
+    onConfirm: () => void;
+  } | null>(null);
+
+  // Delete modal (requires typing "delete")
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   const isAdmin = authUser?.isAdmin ?? false;
   const isSelf = authUser?.sAMAccountName === username;
   const canEdit = isAdmin || isSelf;
@@ -342,33 +356,35 @@ export default function UserEdit() {
               {isAdmin && (
                 <>
                   <button
-                    onClick={async () => {
+                    onClick={() => {
                       const action = isDisabled ? 'enable' : 'disable';
-                      if (!confirm(`Are you sure you want to ${action} ${user.displayName}?`)) return;
-                      try {
-                        await api.toggleUser(user.sAMAccountName, isDisabled);
-                        const updated = await api.getUser(user.sAMAccountName);
-                        setUser(updated);
-                        setMessage({ type: 'success', text: `Account ${action}d` });
-                        setTimeout(() => setMessage(null), 3000);
-                      } catch (err: any) {
-                        setMessage({ type: 'error', text: err.message });
-                      }
+                      setConfirmModal({
+                        title: `${isDisabled ? 'Enable' : 'Disable'} Account`,
+                        message: `Are you sure you want to ${action} ${user.displayName}?`,
+                        confirmLabel: `${isDisabled ? 'Enable' : 'Disable'} Account`,
+                        variant: isDisabled ? 'default' : 'warning',
+                        onConfirm: async () => {
+                          try {
+                            await api.toggleUser(user.sAMAccountName, isDisabled);
+                            const updated = await api.getUser(user.sAMAccountName);
+                            setUser(updated);
+                            setMessage({ type: 'success', text: `Account ${action}d` });
+                            setTimeout(() => setMessage(null), 3000);
+                          } catch (err: any) {
+                            setMessage({ type: 'error', text: err.message });
+                          }
+                          setConfirmModal(null);
+                        },
+                      });
                     }}
                     className={`w-full ${isDisabled ? 'btn-secondary' : 'btn-secondary text-amber-600 hover:text-amber-700'}`}
                   >
                     {isDisabled ? <><ShieldCheck size={16} /> Enable Account</> : <><ShieldOff size={16} /> Disable Account</>}
                   </button>
                   <button
-                    onClick={async () => {
-                      if (!confirm(`⚠️ Permanently delete ${user.displayName}?\n\nThis cannot be undone.`)) return;
-                      if (!confirm(`Are you really sure? Type this is irreversible.`)) return;
-                      try {
-                        await api.deleteUser(user.sAMAccountName);
-                        navigate('/users');
-                      } catch (err: any) {
-                        setMessage({ type: 'error', text: err.message });
-                      }
+                    onClick={() => {
+                      setDeleteConfirmText('');
+                      setShowDeleteModal(true);
                     }}
                     className="btn-danger w-full"
                   >
@@ -400,16 +416,24 @@ export default function UserEdit() {
                       <span className="text-gray-600 truncate">{cn}</span>
                       {isAdmin && (
                         <button
-                          onClick={async () => {
-                            if (!confirm(`Remove ${user.displayName} from ${cn}?`)) return;
-                            try {
-                              await api.removeFromGroup(user.sAMAccountName, group);
-                              setUser((u) => u ? { ...u, memberOf: u.memberOf.filter((g) => g !== group) } : null);
-                              setMessage({ type: 'success', text: `Removed from ${cn}` });
-                              setTimeout(() => setMessage(null), 3000);
-                            } catch (err: any) {
-                              setMessage({ type: 'error', text: err.message });
-                            }
+                          onClick={() => {
+                            setConfirmModal({
+                              title: 'Remove from Group',
+                              message: `Remove ${user.displayName} from ${cn}?`,
+                              confirmLabel: 'Remove',
+                              variant: 'warning',
+                              onConfirm: async () => {
+                                try {
+                                  await api.removeFromGroup(user.sAMAccountName, group);
+                                  setUser((u) => u ? { ...u, memberOf: u.memberOf.filter((g) => g !== group) } : null);
+                                  setMessage({ type: 'success', text: `Removed from ${cn}` });
+                                  setTimeout(() => setMessage(null), 3000);
+                                } catch (err: any) {
+                                  setMessage({ type: 'error', text: err.message });
+                                }
+                                setConfirmModal(null);
+                              },
+                            });
                           }}
                           className="opacity-0 group-hover/item:opacity-100 text-red-400 hover:text-red-600 shrink-0 transition-opacity"
                           title={`Remove from ${cn}`}
@@ -519,6 +543,75 @@ export default function UserEdit() {
             setTimeout(() => setMessage(null), 3000);
           }}
         />
+      )}
+
+      {/* Confirmation Modal */}
+      {confirmModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setConfirmModal(null)}>
+          <div className="card w-full max-w-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold">{confirmModal.title}</h2>
+            <p className="text-sm text-gray-600">{confirmModal.message}</p>
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setConfirmModal(null)} className="btn-secondary flex-1">Cancel</button>
+              <button
+                onClick={confirmModal.onConfirm}
+                className={`flex-1 ${
+                  confirmModal.variant === 'danger' ? 'btn-danger' :
+                  confirmModal.variant === 'warning' ? 'btn-primary bg-amber-600 hover:bg-amber-700' :
+                  'btn-primary'
+                }`}
+              >
+                {confirmModal.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete User Modal */}
+      {showDeleteModal && user && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowDeleteModal(false)}>
+          <div className="card w-full max-w-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-red-600 flex items-center gap-2"><AlertCircle size={20} /> Delete User</h2>
+            <p className="text-sm text-gray-600">
+              This will permanently delete <strong>{user.displayName}</strong>. This action cannot be undone.
+            </p>
+            <div>
+              <label className="label">Type <strong className="text-red-600">delete</strong> to confirm</label>
+              <input
+                type="text"
+                className="input"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="delete"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setShowDeleteModal(false)} className="btn-secondary flex-1">Cancel</button>
+              <button
+                disabled={deleteConfirmText !== 'delete' || deleteLoading}
+                onClick={async () => {
+                  setDeleteLoading(true);
+                  try {
+                    await api.deleteUser(user.sAMAccountName);
+                    setShowDeleteModal(false);
+                    navigate('/users');
+                  } catch (err: any) {
+                    setMessage({ type: 'error', text: err.message });
+                    setShowDeleteModal(false);
+                  } finally {
+                    setDeleteLoading(false);
+                  }
+                }}
+                className="btn-danger flex-1 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {deleteLoading ? <Loader2 size={16} className="animate-spin" /> : <UserX size={16} />}
+                Delete User
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
