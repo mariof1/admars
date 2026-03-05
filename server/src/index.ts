@@ -18,6 +18,9 @@ initDb();
 
 const app = express();
 
+// Trust reverse proxy (nginx/traefik) for accurate rate-limiting by real client IP
+app.set('trust proxy', 1);
+
 // Security headers
 app.disable('x-powered-by');
 app.use(helmet({
