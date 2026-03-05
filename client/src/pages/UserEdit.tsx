@@ -579,6 +579,7 @@ export default function UserEdit() {
                 aspect={1}
                 cropShape="round"
                 showGrid={false}
+                zoomSpeed={0.2}
                 onCropChange={setCrop}
                 onZoomChange={setZoom}
                 onCropComplete={onCropComplete}
@@ -590,7 +591,7 @@ export default function UserEdit() {
                 type="range"
                 min={1}
                 max={3}
-                step={0.05}
+                step={0.02}
                 value={zoom}
                 onChange={(e) => setZoom(Number(e.target.value))}
                 className="flex-1 accent-brand-600"
