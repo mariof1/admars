@@ -8,7 +8,7 @@ import {
   ArrowLeft, Save, Camera, Trash2, Key, Loader2, CheckCircle, AlertCircle,
   User, Mail, Building2, Phone, MapPin, Briefcase, Globe, Hash,
   Plus, X, Search, Users, ShieldOff, ShieldCheck, UserX, Lock, Unlock,
-  ZoomIn, ZoomOut
+  ZoomIn, ZoomOut, FolderTree
 } from 'lucide-react';
 
 interface AdUser {
@@ -173,6 +173,12 @@ export default function UserEdit() {
   const [managerSearching, setManagerSearching] = useState(false);
   const [showManagerPicker, setShowManagerPicker] = useState(false);
 
+  // OU move
+  const [ous, setOus] = useState<{ dn: string; name: string; description: string; depth: number }[]>([]);
+  const [showOuPicker, setShowOuPicker] = useState(false);
+  const [ouLoading, setOuLoading] = useState(false);
+  const [moveLoading, setMoveLoading] = useState(false);
+
   const isAdmin = authUser?.isAdmin ?? false;
   const isSelf = authUser?.sAMAccountName === username;
   const canEdit = isAdmin;
@@ -184,6 +190,45 @@ export default function UserEdit() {
     if (!dn) return '';
     const match = dn.match(/^CN=([^,]+)/i);
     return match ? match[1] : dn;
+  };
+
+  // Extract OU path from DN: "CN=...,OU=Sub,OU=Top,DC=..." → "OU=Sub,OU=Top,DC=..."
+  const dnToOu = (dn: string): string => {
+    if (!dn) return '';
+    const parts = dn.split(',');
+    return parts.slice(1).join(',');
+  };
+
+  // Format OU for display: "OU=LocalUsers,DC=pixel,DC=lan" → "LocalUsers"
+  const ouToLabel = (dn: string): string => {
+    if (!dn) return '';
+    const ouParts = dn.split(',').filter(p => p.trim().toUpperCase().startsWith('OU='));
+    return ouParts.map(p => p.replace(/^OU=/i, '')).join(' / ');
+  };
+
+  const handleLoadOus = async () => {
+    if (ous.length > 0) { setShowOuPicker(!showOuPicker); return; }
+    setOuLoading(true);
+    try {
+      const { ous: loaded } = await api.getOUs();
+      setOus(loaded);
+      setShowOuPicker(true);
+    } catch {} finally { setOuLoading(false); }
+  };
+
+  const handleMoveUser = async (targetOu: string) => {
+    if (!user || !username) return;
+    setMoveLoading(true);
+    try {
+      await api.moveUser(username, targetOu);
+      const updated = await api.getUser(username);
+      setUser(updated);
+      setShowOuPicker(false);
+      setToast({ type: 'success', text: `User moved to ${ouToLabel(targetOu) || 'new OU'}` });
+      setTimeout(() => setToast(null), 3000);
+    } catch (err: any) {
+      setToast({ type: 'error', text: err.message });
+    } finally { setMoveLoading(false); }
   };
 
   const handleManagerSearch = useCallback(async (q: string) => {
@@ -606,6 +651,54 @@ export default function UserEdit() {
               </div>
             </div>
           ))}
+
+          {/* Location (OU) section — admin only */}
+          {isAdmin && user && (
+            <div className="card">
+              <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-100">
+                <FolderTree size={18} className="text-brand-600" />
+                <h3 className="text-sm font-semibold text-gray-900">Location</h3>
+              </div>
+              <div className="p-6">
+                <label className="label">Organizational Unit</label>
+                <div className="flex items-center gap-3">
+                  <div className="input flex-1 bg-gray-50 text-sm text-gray-700">
+                    {ouToLabel(dnToOu(user.dn)) || dnToOu(user.dn)}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleLoadOus}
+                    disabled={ouLoading}
+                    className="btn-secondary text-sm px-4 py-2 whitespace-nowrap"
+                  >
+                    {ouLoading ? <Loader2 size={14} className="animate-spin" /> : 'Move'}
+                  </button>
+                </div>
+                {showOuPicker && (
+                  <div className="mt-2 border border-gray-200 rounded-lg max-h-56 overflow-y-auto bg-white shadow-sm">
+                    {ous.map((ou) => {
+                      const isCurrent = dnToOu(user.dn) === ou.dn;
+                      return (
+                        <button
+                          key={ou.dn}
+                          type="button"
+                          disabled={isCurrent || moveLoading}
+                          className={`w-full text-left px-3 py-2 text-sm transition-colors ${isCurrent ? 'bg-brand-50 text-brand-700 font-medium' : 'hover:bg-brand-50'} disabled:opacity-50`}
+                          style={{ paddingLeft: `${12 + ou.depth * 16}px` }}
+                          onClick={() => handleMoveUser(ou.dn)}
+                        >
+                          <FolderTree size={14} className={`inline mr-2 ${isCurrent ? 'text-brand-500' : 'text-amber-500'}`} />
+                          {ou.name}
+                          {isCurrent && <span className="text-xs text-brand-500 ml-2">(current)</span>}
+                          {ou.description && <span className="text-gray-400 text-xs ml-2">— {ou.description}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
         </div>
       </div>

@@ -470,6 +470,59 @@ export async function resetPassword(settings: AdSettings, dn: string, newPasswor
   }
 }
 
+export interface AdOU {
+  dn: string;
+  name: string;
+  description: string;
+  depth: number;
+}
+
+export async function searchOUs(settings: AdSettings): Promise<AdOU[]> {
+  const client = createClient(settings);
+  try {
+    await client.bind(settings.bindDN, settings.bindPassword);
+
+    // Search from domain root for all OUs
+    const domainRoot = settings.baseDN.split(',').filter((p) => p.trim().toUpperCase().startsWith('DC=')).join(',') || settings.baseDN;
+
+    const { searchEntries } = await client.search(domainRoot, {
+      filter: '(objectClass=organizationalUnit)',
+      scope: 'sub',
+      attributes: ['dn', 'ou', 'name', 'description'],
+    });
+
+    const domainDepth = domainRoot.split(',').length;
+
+    return searchEntries
+      .map((entry) => {
+        const dn = entry.dn ?? '';
+        const name = String(entry.ou || entry.name || '');
+        const desc = entry.description;
+        const description = Array.isArray(desc) ? (desc.length > 0 ? String(desc[0]) : '') : String(desc || '');
+        const depth = dn.split(',').length - domainDepth;
+        return { dn, name, description, depth };
+      })
+      .sort((a, b) => a.dn.localeCompare(b.dn));
+  } finally {
+    try { await client.unbind(); } catch {}
+  }
+}
+
+export async function moveUser(settings: AdSettings, userDn: string, targetOu: string): Promise<void> {
+  const client = createClient(settings);
+  try {
+    await client.bind(settings.bindDN, settings.bindPassword);
+
+    // Extract CN from current DN
+    const cnMatch = userDn.match(/^(CN=[^,]+)/i);
+    if (!cnMatch) throw new Error('Invalid user DN');
+
+    await client.modifyDN(userDn, cnMatch[1] + ',' + targetOu);
+  } finally {
+    try { await client.unbind(); } catch {}
+  }
+}
+
 export interface AdGroup {
   dn: string;
   cn: string;

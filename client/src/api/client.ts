@@ -86,6 +86,10 @@ class ApiClient {
   }
   addToGroup(username: string, groupDn: string) { return this.fetch(`/users/${username}/groups`, { method: 'POST', body: JSON.stringify({ groupDn }) }); }
   removeFromGroup(username: string, groupDn: string) { return this.fetch(`/users/${username}/groups`, { method: 'DELETE', body: JSON.stringify({ groupDn }) }); }
+
+  // OUs
+  getOUs() { return this.fetch<{ ous: { dn: string; name: string; description: string; depth: number }[] }>('/users/ous/list'); }
+  moveUser(username: string, targetOu: string) { return this.fetch(`/users/${username}/move`, { method: 'POST', body: JSON.stringify({ targetOu }) }); }
 }
 
 export const api = new ApiClient();

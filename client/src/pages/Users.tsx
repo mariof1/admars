@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
-import { Search, ChevronLeft, ChevronRight, User, Mail, Building2, Shield, ShieldOff, UserPlus, X, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, User, Mail, Building2, Shield, ShieldOff, UserPlus, X, Loader2, CheckCircle, AlertCircle, FolderTree, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface AdUser {
   sAMAccountName: string;
@@ -194,9 +194,21 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
     password: '',
     confirmPassword: '',
     enabled: true,
+    ou: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [ous, setOus] = useState<{ dn: string; name: string; description: string; depth: number }[]>([]);
+  const [ouLoading, setOuLoading] = useState(false);
+  const [ouExpanded, setOuExpanded] = useState(false);
+
+  useEffect(() => {
+    setOuLoading(true);
+    api.getOUs()
+      .then(({ ous }) => setOus(ous))
+      .catch(() => {})
+      .finally(() => setOuLoading(false));
+  }, []);
 
   const updateField = (key: string, value: any) => {
     setForm((f) => {
@@ -237,6 +249,7 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
         mail: form.mail || undefined,
         password: form.password,
         enabled: form.enabled,
+        ou: form.ou || undefined,
       });
       onCreated(result.sAMAccountName);
     } catch (err: any) {
@@ -301,6 +314,50 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
               <label className="label">Confirm Password *</label>
               <input type="password" className="input" value={form.confirmPassword} onChange={(e) => updateField('confirmPassword', e.target.value)} />
             </div>
+          </div>
+
+          <div>
+            <label className="label">Organizational Unit</label>
+            <button
+              type="button"
+              onClick={() => setOuExpanded(!ouExpanded)}
+              className="input w-full text-left flex items-center justify-between gap-2"
+            >
+              <span className={form.ou ? 'text-gray-900' : 'text-gray-400'}>
+                {form.ou ? ous.find(o => o.dn === form.ou)?.name || form.ou : 'Default (base DN)'}
+              </span>
+              {ouExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+            </button>
+            {ouExpanded && (
+              <div className="mt-1 border border-gray-200 rounded-lg max-h-48 overflow-y-auto bg-white shadow-sm">
+                {ouLoading ? (
+                  <div className="flex items-center justify-center py-4"><Loader2 size={16} className="animate-spin text-gray-400" /></div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-brand-50 transition-colors ${!form.ou ? 'bg-brand-50 text-brand-700 font-medium' : ''}`}
+                      onClick={() => { updateField('ou', ''); setOuExpanded(false); }}
+                    >
+                      <FolderTree size={14} className="inline mr-2 text-gray-400" />Default (base DN)
+                    </button>
+                    {ous.map((ou) => (
+                      <button
+                        key={ou.dn}
+                        type="button"
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-brand-50 transition-colors ${form.ou === ou.dn ? 'bg-brand-50 text-brand-700 font-medium' : ''}`}
+                        style={{ paddingLeft: `${12 + ou.depth * 16}px` }}
+                        onClick={() => { updateField('ou', ou.dn); setOuExpanded(false); }}
+                      >
+                        <FolderTree size={14} className="inline mr-2 text-amber-500" />
+                        {ou.name}
+                        {ou.description && <span className="text-gray-400 text-xs ml-2">— {ou.description}</span>}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           <label className="flex items-center gap-2 cursor-pointer">
