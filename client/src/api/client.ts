@@ -70,9 +70,9 @@ class ApiClient {
   unlockUser(username: string) { return this.fetch(`/users/${username}/unlock`, { method: 'POST' }); }
   deleteUser(username: string) { return this.fetch(`/users/${username}`, { method: 'DELETE' }); }
 
-  uploadPhoto(username: string, file: File) {
+  uploadPhoto(username: string, file: File | Blob) {
     const form = new FormData();
-    form.append('photo', file);
+    form.append('photo', file, file instanceof File ? file.name : 'photo.jpg');
     return this.fetch(`/users/${username}/photo`, { method: 'POST', body: form });
   }
   deletePhoto(username: string) { return this.fetch(`/users/${username}/photo`, { method: 'DELETE' }); }

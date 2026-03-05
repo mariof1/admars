@@ -2,10 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../api/client';
+import Cropper from 'react-easy-crop';
+import type { Area } from 'react-easy-crop';
 import {
   ArrowLeft, Save, Camera, Trash2, Key, Loader2, CheckCircle, AlertCircle,
   User, Mail, Building2, Phone, MapPin, Briefcase, Globe, Hash,
-  Plus, X, Search, Users, ShieldOff, ShieldCheck, UserX, Lock, Unlock
+  Plus, X, Search, Users, ShieldOff, ShieldCheck, UserX, Lock, Unlock,
+  ZoomIn, ZoomOut
 } from 'lucide-react';
 
 interface AdUser {
@@ -155,6 +158,13 @@ export default function UserEdit() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // Photo crop modal
+  const [cropImage, setCropImage] = useState<string | null>(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+  const [cropUploading, setCropUploading] = useState(false);
+
   const isAdmin = authUser?.isAdmin ?? false;
   const isSelf = authUser?.sAMAccountName === username;
   const canEdit = isAdmin || isSelf;
@@ -192,17 +202,39 @@ export default function UserEdit() {
     }
   };
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !username) return;
+    if (!file) return;
+    e.target.value = '';
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropImage(reader.result as string);
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
+      setCroppedAreaPixels(null);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const onCropComplete = useCallback((_: Area, croppedPixels: Area) => {
+    setCroppedAreaPixels(croppedPixels);
+  }, []);
+
+  const handleCropUpload = async () => {
+    if (!cropImage || !croppedAreaPixels || !username) return;
+    setCropUploading(true);
     try {
-      await api.uploadPhoto(username, file);
+      const blob = await getCroppedBlob(cropImage, croppedAreaPixels);
+      await api.uploadPhoto(username, blob);
       const data = await api.getUser(username);
       setUser(data);
+      setCropImage(null);
       setMessage({ type: 'success', text: 'Photo updated' });
       setTimeout(() => setMessage(null), 3000);
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message });
+    } finally {
+      setCropUploading(false);
     }
   };
 
@@ -308,7 +340,7 @@ export default function UserEdit() {
                 {canEdit && (
                   <label className="absolute bottom-0 right-0 w-10 h-10 bg-brand-600 text-white rounded-full flex items-center justify-center cursor-pointer shadow-lg hover:bg-brand-700 transition-colors">
                     <Camera size={16} />
-                    <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                    <input type="file" accept="image/*" className="hidden" onChange={handlePhotoSelect} />
                   </label>
                 )}
               </div>
@@ -531,6 +563,51 @@ export default function UserEdit() {
         </div>
       )}
 
+      {/* Photo Crop Modal */}
+      {cropImage && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="card w-full max-w-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-lg font-bold flex items-center gap-2"><Camera size={20} className="text-brand-600" /> Crop Photo</h2>
+              <button onClick={() => setCropImage(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X size={18} /></button>
+            </div>
+            <div className="relative w-full" style={{ height: 340 }}>
+              <Cropper
+                image={cropImage}
+                crop={crop}
+                zoom={zoom}
+                aspect={1}
+                cropShape="round"
+                showGrid={false}
+                onCropChange={setCrop}
+                onZoomChange={setZoom}
+                onCropComplete={onCropComplete}
+              />
+            </div>
+            <div className="px-6 py-3 flex items-center gap-3">
+              <ZoomOut size={16} className="text-gray-400 shrink-0" />
+              <input
+                type="range"
+                min={1}
+                max={3}
+                step={0.05}
+                value={zoom}
+                onChange={(e) => setZoom(Number(e.target.value))}
+                className="flex-1 accent-brand-600"
+              />
+              <ZoomIn size={16} className="text-gray-400 shrink-0" />
+            </div>
+            <div className="px-6 py-4 border-t border-gray-100 flex gap-3">
+              <button onClick={() => setCropImage(null)} className="btn-secondary flex-1">Cancel</button>
+              <button onClick={handleCropUpload} disabled={cropUploading} className="btn-primary flex-1">
+                {cropUploading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                Upload Photo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add to Group Modal */}
       {showGroupModal && user && (
         <AddGroupModal
@@ -725,4 +802,25 @@ function AddGroupModal({ username, currentGroups, onClose, onAdded }: {
       </div>
     </div>
   );
+}
+
+function getCroppedBlob(imageSrc: string, crop: Area): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = crop.width;
+      canvas.height = crop.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return reject(new Error('Canvas not supported'));
+      ctx.drawImage(img, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('Failed to create blob'));
+      }, 'image/jpeg', 0.92);
+    };
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = imageSrc;
+  });
 }
