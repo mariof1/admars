@@ -2,7 +2,7 @@ import { Router, Response, Request } from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
 import { getSettings } from '../config/database.js';
-import { searchUsers, getUser, updateUser, updateUserPhoto, deleteUserPhoto, resetPassword, createUser, searchGroups, addUserToGroup, removeUserFromGroup, setUserEnabled, deleteUser } from '../services/ldap.js';
+import { searchUsers, getUser, updateUser, updateUserPhoto, deleteUserPhoto, resetPassword, createUser, searchGroups, addUserToGroup, removeUserFromGroup, setUserEnabled, deleteUser, unlockUser } from '../services/ldap.js';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.js';
 
 const router = Router();
@@ -128,6 +128,23 @@ router.post('/:username/toggle', authMiddleware, adminMiddleware, async (req: Au
     res.json({ success: true });
   } catch (err: any) {
     console.error('Toggle user error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Unlock user account (admin only)
+router.post('/:username/unlock', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const settings = getSettings();
+    if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
+
+    const user = await getUser(settings, String(req.params.username));
+    if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+    await unlockUser(settings, user.dn);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('Unlock user error:', err);
     res.status(500).json({ error: err.message });
   }
 });

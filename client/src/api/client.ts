@@ -67,6 +67,7 @@ class ApiClient {
   getUser(username: string) { return this.fetch<any>(`/users/${username}`); }
   updateUser(username: string, data: any) { return this.fetch(`/users/${username}`, { method: 'PUT', body: JSON.stringify(data) }); }
   toggleUser(username: string, enabled: boolean) { return this.fetch(`/users/${username}/toggle`, { method: 'POST', body: JSON.stringify({ enabled }) }); }
+  unlockUser(username: string) { return this.fetch(`/users/${username}/unlock`, { method: 'POST' }); }
   deleteUser(username: string) { return this.fetch(`/users/${username}`, { method: 'DELETE' }); }
 
   uploadPhoto(username: string, file: File) {

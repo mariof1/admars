@@ -5,7 +5,7 @@ import api from '../api/client';
 import {
   ArrowLeft, Save, Camera, Trash2, Key, Loader2, CheckCircle, AlertCircle,
   User, Mail, Building2, Phone, MapPin, Briefcase, Globe, Hash,
-  Plus, X, Search, Users, ShieldOff, ShieldCheck, UserX
+  Plus, X, Search, Users, ShieldOff, ShieldCheck, UserX, Lock, Unlock
 } from 'lucide-react';
 
 interface AdUser {
@@ -32,6 +32,7 @@ interface AdUser {
   info: string;
   employeeID: string;
   employeeNumber: string;
+  lockoutTime: string;
   userAccountControl: number;
   memberOf: string[];
   thumbnailPhoto?: string;
@@ -247,6 +248,7 @@ export default function UserEdit() {
 
   const UAC_DISABLED = 0x0002;
   const isDisabled = (user.userAccountControl & UAC_DISABLED) !== 0;
+  const isLocked = user.lockoutTime && user.lockoutTime !== '0' && user.lockoutTime !== '';
 
   return (
     <div>
@@ -300,9 +302,9 @@ export default function UserEdit() {
               <p className="text-sm text-gray-500">{user.title || 'No title'}</p>
 
               <span className={`mt-3 inline-flex items-center gap-1 text-xs font-medium px-3 py-1 rounded-full ${
-                isDisabled ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'
+                isDisabled ? 'bg-red-50 text-red-700' : isLocked ? 'bg-amber-50 text-amber-700' : 'bg-green-50 text-green-700'
               }`}>
-                {isDisabled ? 'Disabled' : 'Active'}
+                {isDisabled ? 'Disabled' : isLocked ? <><Lock size={12} /> Locked</> : 'Active'}
               </span>
 
               {canEdit && user.thumbnailPhoto && (
@@ -319,6 +321,24 @@ export default function UserEdit() {
               <button onClick={() => setShowPwModal(true)} className="btn-secondary w-full">
                 <Key size={16} /> Reset Password
               </button>
+              {isAdmin && isLocked && (
+                <button
+                  onClick={async () => {
+                    try {
+                      await api.unlockUser(user.sAMAccountName);
+                      const updated = await api.getUser(user.sAMAccountName);
+                      setUser(updated);
+                      setMessage({ type: 'success', text: 'Account unlocked' });
+                      setTimeout(() => setMessage(null), 3000);
+                    } catch (err: any) {
+                      setMessage({ type: 'error', text: err.message });
+                    }
+                  }}
+                  className="btn-secondary w-full text-amber-600 hover:text-amber-700"
+                >
+                  <Unlock size={16} /> Unlock Account
+                </button>
+              )}
               {isAdmin && (
                 <>
                   <button

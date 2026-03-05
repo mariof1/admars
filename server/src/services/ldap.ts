@@ -26,6 +26,7 @@ export interface AdUser {
   info: string;
   employeeID: string;
   employeeNumber: string;
+  lockoutTime: string;
   userAccountControl: number;
   whenCreated: string;
   whenChanged: string;
@@ -39,7 +40,7 @@ const AD_USER_ATTRIBUTES = [
   'mail', 'title', 'department', 'company', 'manager', 'directReports',
   'telephoneNumber', 'mobile', 'streetAddress', 'l', 'st', 'postalCode', 'co',
   'physicalDeliveryOfficeName', 'description', 'info', 'employeeID', 'employeeNumber',
-  'userAccountControl', 'whenCreated', 'whenChanged', 'lastLogon', 'memberOf',
+  'lockoutTime', 'userAccountControl', 'whenCreated', 'whenChanged', 'lastLogon', 'memberOf',
   'thumbnailPhoto', 'homeDrive', 'homeDirectory', 'scriptPath', 'profilePath',
   'wWWHomePage', 'ipPhone', 'facsimileTelephoneNumber', 'pager',
 ];
@@ -134,6 +135,7 @@ function parseEntry(entry: ldap.SearchEntry): AdUser {
     info: get('info'),
     employeeID: get('employeeID'),
     employeeNumber: get('employeeNumber'),
+    lockoutTime: get('lockoutTime'),
     userAccountControl: parseInt(get('userAccountControl')) || 0,
     whenCreated: get('whenCreated'),
     whenChanged: get('whenChanged'),
@@ -403,6 +405,30 @@ export async function setUserEnabled(settings: AdSettings, dn: string, enabled: 
       modification: new ldap.Attribute({
         type: 'userAccountControl',
         values: [String(newUac)],
+      }),
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      client.modify(dn, [change], (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  } finally {
+    try { await unbindClient(client); } catch {}
+  }
+}
+
+export async function unlockUser(settings: AdSettings, dn: string): Promise<void> {
+  const client = createClient(settings);
+  try {
+    await bindClient(client, settings.bindDN, settings.bindPassword);
+
+    const change = new ldap.Change({
+      operation: 'replace',
+      modification: new ldap.Attribute({
+        type: 'lockoutTime',
+        values: ['0'],
       }),
     });
 
