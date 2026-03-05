@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import { getSettings } from '../config/database.js';
 import { searchUsers, getUser, updateUser, updateUserPhoto, deleteUserPhoto, resetPassword, createUser, searchGroups, addUserToGroup, removeUserFromGroup, setUserEnabled, deleteUser, unlockUser } from '../services/ldap.js';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.js';
+import { validateUsername, validateCreateUser, validateFieldLengths, validateGroupDn } from '../middleware/validate.js';
 import { logAction, logError } from '../utils/logger.js';
 
 const router = Router();
@@ -28,7 +29,7 @@ router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
 });
 
 // Create new user (admin only)
-router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+router.post('/', authMiddleware, adminMiddleware, validateCreateUser, async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
@@ -58,7 +59,7 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
 });
 
 // Get single user
-router.get('/:username', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/:username', authMiddleware, validateUsername, async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
@@ -80,7 +81,7 @@ router.get('/:username', authMiddleware, async (req: AuthRequest, res: Response)
 });
 
 // Update user
-router.put('/:username', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.put('/:username', authMiddleware, validateUsername, validateFieldLengths, async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
@@ -116,7 +117,7 @@ router.put('/:username', authMiddleware, async (req: AuthRequest, res: Response)
 });
 
 // Enable/disable user (admin only)
-router.post('/:username/toggle', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+router.post('/:username/toggle', authMiddleware, adminMiddleware, validateUsername, async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
@@ -141,7 +142,7 @@ router.post('/:username/toggle', authMiddleware, adminMiddleware, async (req: Au
 });
 
 // Unlock user account (admin only)
-router.post('/:username/unlock', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+router.post('/:username/unlock', authMiddleware, adminMiddleware, validateUsername, async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
@@ -160,7 +161,7 @@ router.post('/:username/unlock', authMiddleware, adminMiddleware, async (req: Au
 });
 
 // Delete user (admin only)
-router.delete('/:username', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+router.delete('/:username', authMiddleware, adminMiddleware, validateUsername, async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
@@ -185,7 +186,7 @@ router.delete('/:username', authMiddleware, adminMiddleware, async (req: AuthReq
 });
 
 // Upload photo
-router.post('/:username/photo', authMiddleware, upload.single('photo'), async (req: AuthRequest, res: Response) => {
+router.post('/:username/photo', authMiddleware, validateUsername, upload.single('photo'), async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
@@ -229,7 +230,7 @@ router.post('/:username/photo', authMiddleware, upload.single('photo'), async (r
 });
 
 // Delete photo
-router.delete('/:username/photo', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.delete('/:username/photo', authMiddleware, validateUsername, async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
@@ -254,7 +255,7 @@ router.delete('/:username/photo', authMiddleware, async (req: AuthRequest, res: 
 });
 
 // Reset password (admin or self)
-router.post('/:username/password', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.post('/:username/password', authMiddleware, validateUsername, async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
@@ -285,7 +286,7 @@ router.post('/:username/password', authMiddleware, async (req: AuthRequest, res:
 });
 
 // Search groups (admin only)
-router.get('/:username/groups/search', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/:username/groups/search', authMiddleware, adminMiddleware, validateUsername, async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
@@ -300,7 +301,7 @@ router.get('/:username/groups/search', authMiddleware, adminMiddleware, async (r
 });
 
 // Add user to group (admin only)
-router.post('/:username/groups', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+router.post('/:username/groups', authMiddleware, adminMiddleware, validateUsername, validateGroupDn, async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
@@ -323,7 +324,7 @@ router.post('/:username/groups', authMiddleware, adminMiddleware, async (req: Au
 });
 
 // Remove user from group (admin only)
-router.delete('/:username/groups', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+router.delete('/:username/groups', authMiddleware, adminMiddleware, validateUsername, validateGroupDn, async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
     if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }

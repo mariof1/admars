@@ -650,5 +650,6 @@ export async function testConnection(settings: AdSettings): Promise<{ success: b
 }
 
 function ldapEscape(str: string): string {
-  return str.replace(/[\\*()\x00]/g, (ch) => '\\' + ch.charCodeAt(0).toString(16).padStart(2, '0'));
+  // RFC 4515 — escape ALL special LDAP filter chars + control chars
+  return str.replace(/[\\*()\x00\x01-\x1f\x7f]/g, (ch) => '\\' + ch.charCodeAt(0).toString(16).padStart(2, '0'));
 }

@@ -1,9 +1,27 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { getSettings } from '../config/database.js';
+import crypto from 'crypto';
+import { getDb, getSettings } from '../config/database.js';
 import { isAdmin, AdUser } from '../services/ldap.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'admars-secret-change-in-production-' + Math.random().toString(36);
+function getJwtSecret(): string {
+  const env = process.env.JWT_SECRET;
+  if (env) return env;
+
+  const db = getDb();
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('jwt_secret') as { value: string } | undefined;
+  if (row) return row.value;
+
+  const secret = crypto.randomBytes(64).toString('hex');
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('jwt_secret', secret);
+  return secret;
+}
+
+let _jwtSecret: string | null = null;
+function jwtSecret(): string {
+  if (!_jwtSecret) _jwtSecret = getJwtSecret();
+  return _jwtSecret;
+}
 
 export interface AuthPayload {
   sAMAccountName: string;
@@ -18,18 +36,19 @@ export interface AuthRequest extends Request {
 }
 
 export function signToken(payload: AuthPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
+  return jwt.sign(payload, jwtSecret(), { expiresIn: '8h' });
 }
 
 export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction): void {
-  const token = req.headers.authorization?.replace('Bearer ', '') || req.cookies?.token;
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
   if (!token) {
     res.status(401).json({ error: 'Authentication required' });
     return;
   }
 
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
+    const payload = jwt.verify(token, jwtSecret()) as AuthPayload;
     req.user = payload;
     next();
   } catch {

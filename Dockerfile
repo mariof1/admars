@@ -18,6 +18,8 @@ RUN npm run build --workspace=server
 # --- Production ---
 FROM node:20-alpine
 
+RUN addgroup -S admars && adduser -S admars -G admars
+
 WORKDIR /app
 
 COPY --from=builder /app/package.json ./
@@ -27,11 +29,15 @@ COPY --from=builder /app/client/dist ./client/dist
 
 RUN cd server && npm install --omit=dev
 
+RUN mkdir -p /data && chown admars:admars /data
+
 ENV NODE_ENV=production
 ENV PORT=4000
 ENV DATA_DIR=/data
 
 EXPOSE 4000
 VOLUME ["/data"]
+
+USER admars
 
 CMD ["node", "server/dist/index.js"]
