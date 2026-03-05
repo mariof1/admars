@@ -189,11 +189,22 @@ router.post('/:username/photo', authMiddleware, upload.single('photo'), async (r
     const user = await getUser(settings, String(req.params.username));
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
 
-    // Resize to 96x96 JPEG for AD thumbnailPhoto (max ~10KB recommended)
-    const resized = await sharp(req.file.buffer)
-      .resize(96, 96, { fit: 'cover' })
-      .jpeg({ quality: 85 })
+    // Resize to max 648x648 JPEG, ensuring it fits within 100KB for AD thumbnailPhoto
+    let resized = await sharp(req.file.buffer)
+      .resize(648, 648, { fit: 'cover' })
+      .jpeg({ quality: 90 })
       .toBuffer();
+
+    // Reduce quality iteratively if over 100KB
+    const MAX_BYTES = 100 * 1024;
+    let quality = 85;
+    while (resized.length > MAX_BYTES && quality >= 30) {
+      resized = await sharp(req.file.buffer)
+        .resize(648, 648, { fit: 'cover' })
+        .jpeg({ quality })
+        .toBuffer();
+      quality -= 5;
+    }
 
     await updateUserPhoto(settings, user.dn, resized);
     res.json({ success: true });
