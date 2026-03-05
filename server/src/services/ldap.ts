@@ -252,9 +252,7 @@ export async function createUser(settings: AdSettings, input: CreateUserInput): 
     const ou = input.ou || settings.baseDN;
     const dn = `CN=${input.displayName},${ou}`;
 
-    // userAccountControl: 512 = normal account, 514 = disabled
-    const uac = input.enabled !== false ? '512' : '514';
-
+    // Create with UAC 544 (NORMAL_ACCOUNT + PASSWD_NOTREQD) to allow creation over plain LDAP
     const entry: Record<string, string | string[]> = {
       objectClass: ['top', 'person', 'organizationalPerson', 'user'],
       sAMAccountName: input.sAMAccountName,
@@ -263,7 +261,7 @@ export async function createUser(settings: AdSettings, input: CreateUserInput): 
       sn: input.sn,
       displayName: input.displayName,
       cn: input.displayName,
-      userAccountControl: uac,
+      userAccountControl: '544',
     };
 
     if (input.mail) entry.mail = input.mail;
@@ -275,7 +273,7 @@ export async function createUser(settings: AdSettings, input: CreateUserInput): 
       });
     });
 
-    // Set password (requires LDAPS typically)
+    // Try to set password and enable account
     try {
       const quotedPassword = `"${input.password}"`;
       const passwordBuffer = Buffer.from(quotedPassword, 'utf16le');
@@ -292,8 +290,24 @@ export async function createUser(settings: AdSettings, input: CreateUserInput): 
           else resolve();
         });
       });
+
+      // Password set succeeded — now set final UAC (512=enabled, 514=disabled)
+      const finalUac = input.enabled !== false ? '512' : '514';
+      const uacChange = new ldap.Change({
+        operation: 'replace',
+        modification: new ldap.Attribute({
+          type: 'userAccountControl',
+          values: [finalUac],
+        }),
+      });
+      await new Promise<void>((resolve, reject) => {
+        client.modify(dn, [uacChange], (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
     } catch (pwErr: any) {
-      // Password set may fail over non-TLS, user is still created
+      // Over plain LDAP, password set fails — leave account disabled (544) for safety
       console.warn('User created but password could not be set (requires LDAPS):', pwErr.message);
     }
   } finally {
