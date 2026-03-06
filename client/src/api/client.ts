@@ -93,6 +93,14 @@ class ApiClient {
 
   // UPN suffixes
   getUpnSuffixes() { return this.fetch<{ suffixes: string[] }>('/users/upn-suffixes'); }
+
+  // Audit
+  getAuditLogs(params: Record<string, string> = {}) {
+    const qs = new URLSearchParams(params);
+    return this.fetch<{ logs: any[]; total: number; page: number; pageSize: number }>(`/audit/logs?${qs}`);
+  }
+  getAuditActions() { return this.fetch<{ actions: string[] }>('/audit/actions'); }
+  getAuditStats() { return this.fetch<any>('/audit/stats'); }
 }
 
 export const api = new ApiClient();

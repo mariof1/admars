@@ -6,6 +6,7 @@ import Setup from './pages/Setup';
 import Users from './pages/Users';
 import UserEdit from './pages/UserEdit';
 import Settings from './pages/Settings';
+import Reports from './pages/Reports';
 import { useEffect, useState } from 'react';
 import api from './api/client';
 
@@ -57,6 +58,7 @@ export default function App() {
         } />
         <Route path="/users" element={<ProtectedRoute adminOnly><Users /></ProtectedRoute>} />
         <Route path="/users/:username" element={<UserEdit />} />
+        <Route path="/reports" element={<ProtectedRoute adminOnly><Reports /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute adminOnly><Settings /></ProtectedRoute>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

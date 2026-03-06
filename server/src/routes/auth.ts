@@ -24,7 +24,7 @@ router.post('/login', async (req: AuthRequest, res: Response) => {
     const result = await authenticate(settings, username, password);
     if (!result.user) {
       const reason = result.error || 'Invalid credentials';
-      logError(username, 'LOGIN', reason);
+      logError(username, 'LOGIN', reason, req.ip);
       if (result.error === 'Account is disabled') {
         res.status(403).json({ error: 'Account is disabled' });
       } else if (result.error === 'Account is locked') {
@@ -37,7 +37,7 @@ router.post('/login', async (req: AuthRequest, res: Response) => {
 
     const user = result.user;
     const admin = await isAdmin(settings, user);
-    logAction(username, 'LOGIN', undefined, admin ? 'admin' : 'user');
+    logAction(username, 'LOGIN', undefined, admin ? 'admin' : 'user', req.ip);
 
     const token = signToken({
       sAMAccountName: user.sAMAccountName,

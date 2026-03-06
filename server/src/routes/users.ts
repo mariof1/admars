@@ -49,10 +49,10 @@ router.post('/', authMiddleware, adminMiddleware, validateCreateUser, async (req
     }
 
     await createUser(settings, { sAMAccountName, givenName, sn, displayName, userPrincipalName, mail, password, ou, enabled });
-    logAction(req.user!.sAMAccountName, 'CREATE_USER', sAMAccountName, displayName);
+    logAction(req.user!.sAMAccountName, 'CREATE_USER', sAMAccountName, displayName, req.ip);
     res.status(201).json({ success: true, sAMAccountName });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'CREATE_USER', err.message);
+    logError(req.user?.sAMAccountName || 'unknown', 'CREATE_USER', err.message, req.ip);
     console.error('Create user error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -132,10 +132,10 @@ router.put('/:username', authMiddleware, validateUsername, validateFieldLengths,
 
     const changedKeys = Object.keys(changes).filter((k) => changes[k] !== (user as any)[k]);
     await updateUser(settings, user.dn, changes, user);
-    logAction(req.user!.sAMAccountName, 'UPDATE_USER', String(req.params.username), changedKeys.join(', '));
+    logAction(req.user!.sAMAccountName, 'UPDATE_USER', String(req.params.username), changedKeys.join(', '), req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'UPDATE_USER', err.message);
+    logError(req.user?.sAMAccountName || 'unknown', 'UPDATE_USER', err.message, req.ip);
     console.error('Update user error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -157,10 +157,10 @@ router.post('/:username/toggle', authMiddleware, adminMiddleware, validateUserna
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
 
     await setUserEnabled(settings, user.dn, enabled);
-    logAction(req.user!.sAMAccountName, enabled ? 'ENABLE_USER' : 'DISABLE_USER', String(req.params.username));
+    logAction(req.user!.sAMAccountName, enabled ? 'ENABLE_USER' : 'DISABLE_USER', String(req.params.username), undefined, req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'TOGGLE_USER', err.message);
+    logError(req.user?.sAMAccountName || 'unknown', 'TOGGLE_USER', err.message, req.ip);
     console.error('Toggle user error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -176,10 +176,10 @@ router.post('/:username/unlock', authMiddleware, adminMiddleware, validateUserna
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
 
     await unlockUser(settings, user.dn);
-    logAction(req.user!.sAMAccountName, 'UNLOCK_USER', String(req.params.username));
+    logAction(req.user!.sAMAccountName, 'UNLOCK_USER', String(req.params.username), undefined, req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'UNLOCK_USER', err.message);
+    logError(req.user?.sAMAccountName || 'unknown', 'UNLOCK_USER', err.message, req.ip);
     console.error('Unlock user error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -201,10 +201,10 @@ router.delete('/:username', authMiddleware, adminMiddleware, validateUsername, a
     }
 
     await deleteUser(settings, user.dn);
-    logAction(req.user!.sAMAccountName, 'DELETE_USER', String(req.params.username), user.displayName);
+    logAction(req.user!.sAMAccountName, 'DELETE_USER', String(req.params.username), user.displayName, req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'DELETE_USER', err.message);
+    logError(req.user?.sAMAccountName || 'unknown', 'DELETE_USER', err.message, req.ip);
     console.error('Delete user error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -245,10 +245,10 @@ router.post('/:username/photo', authMiddleware, validateUsername, upload.single(
     }
 
     await updateUserPhoto(settings, user.dn, resized);
-    logAction(req.user!.sAMAccountName, 'UPLOAD_PHOTO', String(req.params.username), `${Math.round(resized.length / 1024)}KB`);
+    logAction(req.user!.sAMAccountName, 'UPLOAD_PHOTO', String(req.params.username), `${Math.round(resized.length / 1024)}KB`, req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'UPLOAD_PHOTO', err.message);
+    logError(req.user?.sAMAccountName || 'unknown', 'UPLOAD_PHOTO', err.message, req.ip);
     console.error('Upload photo error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -270,10 +270,10 @@ router.delete('/:username/photo', authMiddleware, validateUsername, async (req: 
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
 
     await deleteUserPhoto(settings, user.dn);
-    logAction(req.user!.sAMAccountName, 'DELETE_PHOTO', String(req.params.username));
+    logAction(req.user!.sAMAccountName, 'DELETE_PHOTO', String(req.params.username), undefined, req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'DELETE_PHOTO', err.message);
+    logError(req.user?.sAMAccountName || 'unknown', 'DELETE_PHOTO', err.message, req.ip);
     console.error('Delete photo error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -301,10 +301,10 @@ router.post('/:username/password', authMiddleware, validateUsername, async (req:
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
 
     await resetPassword(settings, user.dn, newPassword);
-    logAction(req.user!.sAMAccountName, 'RESET_PASSWORD', String(req.params.username));
+    logAction(req.user!.sAMAccountName, 'RESET_PASSWORD', String(req.params.username), undefined, req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'RESET_PASSWORD', err.message);
+    logError(req.user?.sAMAccountName || 'unknown', 'RESET_PASSWORD', err.message, req.ip);
     console.error('Reset password error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -339,10 +339,10 @@ router.post('/:username/groups', authMiddleware, adminMiddleware, validateUserna
 
     await addUserToGroup(settings, user.dn, groupDn);
     const groupCn = groupDn.match(/^CN=([^,]+)/)?.[1] || groupDn;
-    logAction(req.user!.sAMAccountName, 'ADD_TO_GROUP', String(req.params.username), groupCn);
+    logAction(req.user!.sAMAccountName, 'ADD_TO_GROUP', String(req.params.username), groupCn, req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'ADD_TO_GROUP', err.message);
+    logError(req.user?.sAMAccountName || 'unknown', 'ADD_TO_GROUP', err.message, req.ip);
     console.error('Add to group error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -362,10 +362,10 @@ router.delete('/:username/groups', authMiddleware, adminMiddleware, validateUser
 
     await removeUserFromGroup(settings, user.dn, groupDn);
     const groupCn = groupDn.match(/^CN=([^,]+)/)?.[1] || groupDn;
-    logAction(req.user!.sAMAccountName, 'REMOVE_FROM_GROUP', String(req.params.username), groupCn);
+    logAction(req.user!.sAMAccountName, 'REMOVE_FROM_GROUP', String(req.params.username), groupCn, req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'REMOVE_FROM_GROUP', err.message);
+    logError(req.user?.sAMAccountName || 'unknown', 'REMOVE_FROM_GROUP', err.message, req.ip);
     console.error('Remove from group error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -385,10 +385,10 @@ router.post('/:username/move', authMiddleware, adminMiddleware, validateUsername
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
 
     await moveUser(settings, user.dn, targetOu);
-    logAction(req.user!.sAMAccountName, 'MOVE_USER', String(req.params.username), `→ ${targetOu}`);
+    logAction(req.user!.sAMAccountName, 'MOVE_USER', String(req.params.username), `→ ${targetOu}`, req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'MOVE_USER', err.message);
+    logError(req.user?.sAMAccountName || 'unknown', 'MOVE_USER', err.message, req.ip);
     console.error('Move user error:', err);
     res.status(500).json({ error: err.message });
   }

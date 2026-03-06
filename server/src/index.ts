@@ -8,6 +8,7 @@ import { setupMiddleware } from './middleware/auth.js';
 import settingsRouter from './routes/settings.js';
 import authRouter from './routes/auth.js';
 import usersRouter from './routes/users.js';
+import auditRouter from './routes/audit.js';
 import { logInfo } from './utils/logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -69,6 +70,7 @@ app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 app.use('/api/settings', settingsRouter);
 app.use('/api/auth', setupMiddleware, authRouter);
 app.use('/api/users', setupMiddleware, usersRouter);
+app.use('/api/audit', setupMiddleware, auditRouter);
 
 // API error handler — return JSON for any /api errors (e.g. multer file size)
 app.use('/api', (err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

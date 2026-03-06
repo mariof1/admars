@@ -27,6 +27,24 @@ export function initDb(): Database.Database {
     );
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+      actor TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target TEXT,
+      detail TEXT,
+      ip TEXT,
+      success INTEGER NOT NULL DEFAULT 1
+    );
+  `);
+
+  // Index for common queries
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp DESC);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_logs(actor);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action);`);
+
   return db;
 }
 

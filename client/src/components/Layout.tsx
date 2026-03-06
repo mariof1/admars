@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Settings, LogOut, Shield, User, Menu, X } from 'lucide-react';
+import { Users, Settings, LogOut, Shield, User, Menu, X, BarChart3 } from 'lucide-react';
 import { useState } from 'react';
 
 export default function Layout() {
@@ -16,6 +16,7 @@ export default function Layout() {
   const navItems = [
     ...(user?.isAdmin ? [{ to: '/users', icon: Users, label: 'Users' }] : []),
     { to: `/users/${user?.sAMAccountName}`, icon: User, label: 'My Profile' },
+    ...(user?.isAdmin ? [{ to: '/reports', icon: BarChart3, label: 'Reports' }] : []),
     ...(user?.isAdmin ? [{ to: '/settings', icon: Settings, label: 'Settings' }] : []),
   ];
 
