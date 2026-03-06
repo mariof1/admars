@@ -58,7 +58,6 @@ const fieldSections: { title: string; icon: typeof User; fields: FieldDef[] }[] 
       { key: 'givenName', label: 'First Name' },
       { key: 'sn', label: 'Last Name' },
       { key: 'displayName', label: 'Display Name' },
-      { key: 'userPrincipalName', label: 'User Principal Name' },
       { key: 'description', label: 'Description' },
     ],
   },
@@ -179,6 +178,9 @@ export default function UserEdit() {
   const [ouLoading, setOuLoading] = useState(false);
   const [moveLoading, setMoveLoading] = useState(false);
 
+  // UPN suffixes
+  const [upnSuffixes, setUpnSuffixes] = useState<string[]>([]);
+
   const isAdmin = authUser?.isAdmin ?? false;
   const isSelf = authUser?.sAMAccountName === username;
   const canEdit = isAdmin;
@@ -245,15 +247,24 @@ export default function UserEdit() {
   useEffect(() => {
     if (!username) return;
     setLoading(true);
-    api.getUser(username)
-      .then((data) => {
+    Promise.all([
+      api.getUser(username),
+      api.getUpnSuffixes().catch(() => ({ suffixes: [] as string[] })),
+    ])
+      .then(([data, { suffixes }]) => {
         setUser(data);
+        setUpnSuffixes(suffixes);
         const formData: Record<string, string> = {};
         for (const section of fieldSections) {
           for (const field of section.fields) {
             formData[field.key] = data[field.key] || '';
           }
         }
+        // Split UPN into prefix and suffix
+        const upn = data.userPrincipalName || '';
+        const atIdx = upn.indexOf('@');
+        formData._upnPrefix = atIdx >= 0 ? upn.substring(0, atIdx) : upn;
+        formData._upnSuffix = atIdx >= 0 ? upn.substring(atIdx + 1) : (suffixes[0] || '');
         setForm(formData);
         setOriginalForm(formData);
       })
@@ -266,7 +277,14 @@ export default function UserEdit() {
     setSaving(true);
     setToast(null);
     try {
-      await api.updateUser(username, form);
+      // Reconstruct UPN from prefix + suffix before saving
+      const payload = { ...form };
+      if (payload._upnPrefix !== undefined) {
+        payload.userPrincipalName = `${payload._upnPrefix}@${payload._upnSuffix}`;
+        delete payload._upnPrefix;
+        delete payload._upnSuffix;
+      }
+      await api.updateUser(username, payload);
       setOriginalForm({ ...form });
       setToast({ type: 'success', text: 'User updated successfully' });
       setTimeout(() => setToast(null), 3000);
@@ -648,6 +666,40 @@ export default function UserEdit() {
                     )}
                   </div>
                 ))}
+                {/* Custom UPN field in Identity section */}
+                {title === 'Identity' && (
+                  <div className="sm:col-span-2">
+                    <label className="label">User Principal Name</label>
+                    <div className="flex">
+                      <input
+                        type="text"
+                        className="input rounded-r-none border-r-0 flex-1"
+                        value={form._upnPrefix || ''}
+                        onChange={(e) => setForm((f) => ({ ...f, _upnPrefix: e.target.value }))}
+                        disabled={!canEdit}
+                        placeholder="username"
+                      />
+                      <span className="inline-flex items-center px-3 bg-gray-100 border border-gray-300 text-gray-500 text-sm">@</span>
+                      {canEdit && upnSuffixes.length > 1 ? (
+                        <select
+                          className="input rounded-l-none border-l-0"
+                          value={form._upnSuffix || ''}
+                          onChange={(e) => setForm((f) => ({ ...f, _upnSuffix: e.target.value }))}
+                        >
+                          {upnSuffixes.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          className="input rounded-l-none border-l-0 bg-gray-50 flex-1"
+                          value={form._upnSuffix || ''}
+                          readOnly
+                          disabled
+                        />
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ))}

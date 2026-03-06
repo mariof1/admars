@@ -189,7 +189,7 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
     givenName: '',
     sn: '',
     displayName: '',
-    userPrincipalName: '',
+    upnPrefix: '',
     mail: '',
     password: '',
     confirmPassword: '',
@@ -201,13 +201,18 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
   const [ous, setOus] = useState<{ dn: string; name: string; description: string; depth: number }[]>([]);
   const [ouLoading, setOuLoading] = useState(false);
   const [ouExpanded, setOuExpanded] = useState(false);
+  const [upnSuffixes, setUpnSuffixes] = useState<string[]>([]);
+  const [selectedSuffix, setSelectedSuffix] = useState('');
 
   useEffect(() => {
     setOuLoading(true);
-    api.getOUs()
-      .then(({ ous }) => setOus(ous))
-      .catch(() => {})
-      .finally(() => setOuLoading(false));
+    Promise.all([
+      api.getOUs().then(({ ous }) => setOus(ous)).catch(() => {}),
+      api.getUpnSuffixes().then(({ suffixes }) => {
+        setUpnSuffixes(suffixes);
+        if (suffixes.length > 0) setSelectedSuffix(suffixes[0]);
+      }).catch(() => {}),
+    ]).finally(() => setOuLoading(false));
   }, []);
 
   const updateField = (key: string, value: any) => {
@@ -218,6 +223,10 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
         const first = key === 'givenName' ? value : f.givenName;
         const last = key === 'sn' ? value : f.sn;
         updated.displayName = `${first} ${last}`.trim();
+      }
+      // Auto-fill UPN prefix from username
+      if (key === 'sAMAccountName' && !f.upnPrefix) {
+        updated.upnPrefix = value;
       }
       return updated;
     });
@@ -240,12 +249,15 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
 
     setLoading(true);
     try {
+      const upn = form.upnPrefix
+        ? `${form.upnPrefix}@${selectedSuffix}`
+        : `${form.sAMAccountName}@${selectedSuffix}`;
       const result = await api.createUser({
         sAMAccountName: form.sAMAccountName,
         givenName: form.givenName,
         sn: form.sn,
         displayName: form.displayName,
-        userPrincipalName: form.userPrincipalName || `${form.sAMAccountName}@${window.location.hostname}`,
+        userPrincipalName: upn,
         mail: form.mail || undefined,
         password: form.password,
         enabled: form.enabled,
@@ -297,7 +309,30 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
 
           <div>
             <label className="label">User Principal Name</label>
-            <input className="input" value={form.userPrincipalName} onChange={(e) => updateField('userPrincipalName', e.target.value)} placeholder="jdoe@domain.com" />
+            <div className="flex">
+              <input
+                className="input rounded-r-none border-r-0 flex-1"
+                value={form.upnPrefix}
+                onChange={(e) => updateField('upnPrefix', e.target.value)}
+                placeholder={form.sAMAccountName || 'username'}
+              />
+              <span className="inline-flex items-center px-3 bg-gray-100 border border-gray-300 text-gray-500 text-sm">@</span>
+              {upnSuffixes.length > 1 ? (
+                <select
+                  className="input rounded-l-none border-l-0"
+                  value={selectedSuffix}
+                  onChange={(e) => setSelectedSuffix(e.target.value)}
+                >
+                  {upnSuffixes.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              ) : (
+                <input
+                  className="input rounded-l-none border-l-0 bg-gray-50 flex-1"
+                  value={selectedSuffix}
+                  readOnly
+                />
+              )}
+            </div>
           </div>
 
           <div>

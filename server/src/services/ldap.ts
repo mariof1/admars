@@ -534,6 +534,56 @@ export async function moveUser(settings: AdSettings, userDn: string, targetOu: s
   }
 }
 
+/** Fetch available UPN suffixes from AD (default domain + any custom suffixes). */
+export async function getUpnSuffixes(settings: AdSettings): Promise<string[]> {
+  const client = createClient(settings);
+  try {
+    await client.bind(settings.bindDN, settings.bindPassword);
+
+    // Default suffix derived from DC components of baseDN
+    const dcParts = settings.baseDN.split(',')
+      .filter(p => p.trim().toUpperCase().startsWith('DC='))
+      .map(p => p.replace(/^DC=/i, ''));
+    const defaultSuffix = dcParts.join('.');
+
+    const suffixes = new Set<string>();
+    if (defaultSuffix) suffixes.add(defaultSuffix);
+
+    // Query RootDSE to find configuration naming context
+    try {
+      const { searchEntries: rootDse } = await client.search('', {
+        scope: 'base',
+        filter: '(objectClass=*)',
+        attributes: ['configurationNamingContext'],
+      });
+      const configNC = rootDse[0]?.configurationNamingContext;
+      const configDN = Array.isArray(configNC) ? (configNC[0] ?? '') : String(configNC || '');
+
+      if (configDN) {
+        // Query Partitions container for additional UPN suffixes
+        const { searchEntries } = await client.search(`CN=Partitions,${configDN}`, {
+          scope: 'base',
+          filter: '(objectClass=*)',
+          attributes: ['uPNSuffixes'],
+        });
+
+        const raw = searchEntries[0]?.uPNSuffixes;
+        const vals = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+        for (const v of vals) {
+          const s = String(v).trim();
+          if (s) suffixes.add(s);
+        }
+      }
+    } catch {
+      // If config query fails, fall back to default suffix only
+    }
+
+    return [...suffixes];
+  } finally {
+    try { await client.unbind(); } catch {}
+  }
+}
+
 export interface AdGroup {
   dn: string;
   cn: string;

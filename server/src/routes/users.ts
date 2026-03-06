@@ -2,7 +2,7 @@ import { Router, Response, Request } from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
 import { getSettings } from '../config/database.js';
-import { searchUsers, getUser, updateUser, updateUserPhoto, deleteUserPhoto, resetPassword, createUser, searchGroups, addUserToGroup, removeUserFromGroup, setUserEnabled, deleteUser, unlockUser, searchOUs, moveUser } from '../services/ldap.js';
+import { searchUsers, getUser, updateUser, updateUserPhoto, deleteUserPhoto, resetPassword, createUser, searchGroups, addUserToGroup, removeUserFromGroup, setUserEnabled, deleteUser, unlockUser, searchOUs, moveUser, getUpnSuffixes } from '../services/ldap.js';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.js';
 import { validateUsername, validateCreateUser, validateFieldLengths, validateGroupDn } from '../middleware/validate.js';
 import { logAction, logError } from '../utils/logger.js';
@@ -344,6 +344,20 @@ router.delete('/:username/groups', authMiddleware, adminMiddleware, validateUser
 });
 
 // List OUs (admin only)
+// UPN suffixes (any authenticated user — needed for create form and edit)
+router.get('/upn-suffixes', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const settings = getSettings();
+    if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
+
+    const suffixes = await getUpnSuffixes(settings);
+    res.json({ suffixes });
+  } catch (err: any) {
+    console.error('UPN suffixes error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/ous/list', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const settings = getSettings();
