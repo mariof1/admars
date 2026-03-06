@@ -8,7 +8,7 @@ import {
   ArrowLeft, Save, Camera, Trash2, Key, Loader2, CheckCircle, AlertCircle,
   User, Mail, Building2, Phone, MapPin, Briefcase, Globe, Hash,
   Plus, X, Search, Users, ShieldOff, ShieldCheck, UserX, Lock, Unlock,
-  ZoomIn, ZoomOut, FolderTree
+  ZoomIn, ZoomOut, FolderTree, Download
 } from 'lucide-react';
 
 interface AdUser {
@@ -449,10 +449,25 @@ export default function UserEdit() {
                 {isDisabled ? 'Disabled' : isLocked ? <><Lock size={12} /> Locked</> : 'Active'}
               </span>
 
-              {canEditPhoto && user.thumbnailPhoto && (
-                <button onClick={handlePhotoDelete} className="btn-ghost text-red-500 hover:text-red-700 mt-3 text-xs">
-                  <Trash2 size={14} /> Remove photo
-                </button>
+              {user.thumbnailPhoto && (
+                <div className="flex items-center gap-2 mt-3">
+                  <button
+                    onClick={() => {
+                      const a = document.createElement('a');
+                      a.href = `data:image/jpeg;base64,${user.thumbnailPhoto}`;
+                      a.download = `${user.sAMAccountName}-photo.jpg`;
+                      a.click();
+                    }}
+                    className="btn-ghost text-gray-500 hover:text-brand-600 text-xs"
+                  >
+                    <Download size={14} /> Download
+                  </button>
+                  {canEditPhoto && (
+                    <button onClick={handlePhotoDelete} className="btn-ghost text-red-500 hover:text-red-700 text-xs">
+                      <Trash2 size={14} /> Remove
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </div>
