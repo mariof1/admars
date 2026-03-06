@@ -51,6 +51,7 @@ const AD_USER_ATTRIBUTES = [
   'lockoutTime', 'userAccountControl', 'whenCreated', 'whenChanged', 'lastLogon', 'memberOf',
   'thumbnailPhoto', 'homeDrive', 'homeDirectory', 'scriptPath', 'profilePath',
   'wWWHomePage', 'ipPhone', 'facsimileTelephoneNumber', 'pager',
+  'jpegPhoto',
 ];
 
 function createClient(settings: AdSettings): Client {
@@ -78,11 +79,12 @@ function parseEntry(entry: Record<string, any>): AdUser {
   };
 
   let thumbnailPhoto: string | undefined;
-  if (entry.thumbnailPhoto) {
-    const photo = entry.thumbnailPhoto;
+  const photoRaw = entry.thumbnailPhoto || entry.jpegPhoto;
+  if (photoRaw) {
+    const photo = Array.isArray(photoRaw) ? (photoRaw.length > 0 ? photoRaw[0] : null) : photoRaw;
     if (Buffer.isBuffer(photo)) {
       thumbnailPhoto = photo.toString('base64');
-    } else if (typeof photo === 'string') {
+    } else if (typeof photo === 'string' && photo.length > 0) {
       thumbnailPhoto = photo;
     }
   }
@@ -430,15 +432,19 @@ export async function updateUserPhoto(settings: AdSettings, dn: string, photoBuf
   try {
     await client.bind(settings.bindDN, settings.bindPassword);
 
-    const change = new Change({
-      operation: 'replace',
-      modification: new Attribute({
-        type: 'thumbnailPhoto',
-        values: [photoBuffer],
-      }),
-    });
-
-    await client.modify(dn, [change]);
+    // Write to both thumbnailPhoto (Microsoft) and jpegPhoto (RFC 2798 / non-MS apps)
+    for (const attr of ['thumbnailPhoto', 'jpegPhoto']) {
+      try {
+        await client.modify(dn, [new Change({
+          operation: 'replace',
+          modification: new Attribute({ type: attr, values: [photoBuffer] }),
+        })]);
+      } catch (err: any) {
+        // jpegPhoto may not be in schema on some AD setups — ignore
+        if (attr === 'jpegPhoto') continue;
+        throw err;
+      }
+    }
   } finally {
     try { await client.unbind(); } catch {}
   }
@@ -449,15 +455,16 @@ export async function deleteUserPhoto(settings: AdSettings, dn: string): Promise
   try {
     await client.bind(settings.bindDN, settings.bindPassword);
 
-    const change = new Change({
-      operation: 'delete',
-      modification: new Attribute({
-        type: 'thumbnailPhoto',
-        values: [],
-      }),
-    });
-
-    await client.modify(dn, [change]);
+    for (const attr of ['thumbnailPhoto', 'jpegPhoto']) {
+      try {
+        await client.modify(dn, [new Change({
+          operation: 'delete',
+          modification: new Attribute({ type: attr, values: [] }),
+        })]);
+      } catch {
+        // Attribute may not exist or not be set — ignore
+      }
+    }
   } finally {
     try { await client.unbind(); } catch {}
   }
