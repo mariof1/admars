@@ -58,6 +58,34 @@ router.post('/', authMiddleware, adminMiddleware, validateCreateUser, async (req
   }
 });
 
+// UPN suffixes (any authenticated user — needed for create form and edit)
+router.get('/upn-suffixes', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const settings = getSettings();
+    if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
+
+    const suffixes = await getUpnSuffixes(settings);
+    res.json({ suffixes });
+  } catch (err: any) {
+    console.error('UPN suffixes error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// List OUs (admin only)
+router.get('/ous/list', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const settings = getSettings();
+    if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
+
+    const ous = await searchOUs(settings);
+    res.json({ ous });
+  } catch (err: any) {
+    console.error('List OUs error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get single user
 router.get('/:username', authMiddleware, validateUsername, async (req: AuthRequest, res: Response) => {
   try {
@@ -344,33 +372,6 @@ router.delete('/:username/groups', authMiddleware, adminMiddleware, validateUser
 });
 
 // List OUs (admin only)
-// UPN suffixes (any authenticated user — needed for create form and edit)
-router.get('/upn-suffixes', authMiddleware, async (req: AuthRequest, res: Response) => {
-  try {
-    const settings = getSettings();
-    if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
-
-    const suffixes = await getUpnSuffixes(settings);
-    res.json({ suffixes });
-  } catch (err: any) {
-    console.error('UPN suffixes error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.get('/ous/list', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
-  try {
-    const settings = getSettings();
-    if (!settings) { res.status(503).json({ error: 'Not configured' }); return; }
-
-    const ous = await searchOUs(settings);
-    res.json({ ous });
-  } catch (err: any) {
-    console.error('List OUs error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Move user to different OU (admin only)
 router.post('/:username/move', authMiddleware, adminMiddleware, validateUsername, async (req: AuthRequest, res: Response) => {
   try {
