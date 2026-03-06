@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { getSettings } from '../config/database.js';
-import { authenticate, isAdmin, getUser } from '../services/ldap.js';
+import { authenticate, isAdmin, getUser, parseLdapError } from '../services/ldap.js';
 import { AuthRequest, authMiddleware, signToken } from '../middleware/auth.js';
 import { logAction, logError } from '../utils/logger.js';
 
@@ -58,8 +58,9 @@ router.post('/login', async (req: AuthRequest, res: Response) => {
       },
     });
   } catch (err: any) {
-    console.error('Login error:', err);
-    res.status(500).json({ error: 'Authentication failed' });
+    const friendly = parseLdapError(err);
+    logError('system', 'LOGIN', friendly, req.ip);
+    res.status(500).json({ error: 'Authentication failed — unable to reach directory server' });
   }
 });
 

@@ -2,7 +2,7 @@ import { Router, Response, Request } from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
 import { getSettings } from '../config/database.js';
-import { searchUsers, getUser, updateUser, updateUserPhoto, deleteUserPhoto, resetPassword, createUser, searchGroups, addUserToGroup, removeUserFromGroup, setUserEnabled, deleteUser, unlockUser, searchOUs, moveUser, getUpnSuffixes } from '../services/ldap.js';
+import { searchUsers, getUser, updateUser, updateUserPhoto, deleteUserPhoto, resetPassword, createUser, searchGroups, addUserToGroup, removeUserFromGroup, setUserEnabled, deleteUser, unlockUser, searchOUs, moveUser, getUpnSuffixes, parseLdapError } from '../services/ldap.js';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.js';
 import { validateUsername, validateCreateUser, validateFieldLengths, validateGroupDn } from '../middleware/validate.js';
 import { logAction, logError } from '../utils/logger.js';
@@ -23,8 +23,8 @@ router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
     const result = await searchUsers(settings, query, page, pageSize);
     res.json(result);
   } catch (err: any) {
-    console.error('Search users error:', err);
-    res.status(500).json({ error: err.message });
+    const friendly = parseLdapError(err);
+    res.status(500).json({ error: friendly });
   }
 });
 
@@ -52,9 +52,9 @@ router.post('/', authMiddleware, adminMiddleware, validateCreateUser, async (req
     logAction(req.user!.sAMAccountName, 'CREATE_USER', sAMAccountName, displayName, req.ip);
     res.status(201).json({ success: true, sAMAccountName });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'CREATE_USER', err.message, req.ip);
-    console.error('Create user error:', err);
-    res.status(500).json({ error: err.message });
+    logError(req.user?.sAMAccountName || 'unknown', 'CREATE_USER', parseLdapError(err), req.ip);
+    const friendly = parseLdapError(err);
+    res.status(500).json({ error: friendly });
   }
 });
 
@@ -67,8 +67,8 @@ router.get('/upn-suffixes', authMiddleware, async (req: AuthRequest, res: Respon
     const suffixes = await getUpnSuffixes(settings);
     res.json({ suffixes });
   } catch (err: any) {
-    console.error('UPN suffixes error:', err);
-    res.status(500).json({ error: err.message });
+    const friendly = parseLdapError(err);
+    res.status(500).json({ error: friendly });
   }
 });
 
@@ -81,8 +81,8 @@ router.get('/ous/list', authMiddleware, adminMiddleware, async (req: AuthRequest
     const ous = await searchOUs(settings);
     res.json({ ous });
   } catch (err: any) {
-    console.error('List OUs error:', err);
-    res.status(500).json({ error: err.message });
+    const friendly = parseLdapError(err);
+    res.status(500).json({ error: friendly });
   }
 });
 
@@ -103,8 +103,8 @@ router.get('/:username', authMiddleware, validateUsername, async (req: AuthReque
 
     res.json(user);
   } catch (err: any) {
-    console.error('Get user error:', err);
-    res.status(500).json({ error: err.message });
+    const friendly = parseLdapError(err);
+    res.status(500).json({ error: friendly });
   }
 });
 
@@ -153,9 +153,9 @@ router.put('/:username', authMiddleware, validateUsername, validateFieldLengths,
     logAction(req.user!.sAMAccountName, 'UPDATE_USER', String(req.params.username), changedKeys.join(', '), req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'UPDATE_USER', err.message, req.ip);
-    console.error('Update user error:', err);
-    res.status(500).json({ error: err.message });
+    logError(req.user?.sAMAccountName || 'unknown', 'UPDATE_USER', parseLdapError(err), req.ip);
+    const friendly = parseLdapError(err);
+    res.status(500).json({ error: friendly });
   }
 });
 
@@ -178,9 +178,9 @@ router.post('/:username/toggle', authMiddleware, adminMiddleware, validateUserna
     logAction(req.user!.sAMAccountName, enabled ? 'ENABLE_USER' : 'DISABLE_USER', String(req.params.username), undefined, req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'TOGGLE_USER', err.message, req.ip);
-    console.error('Toggle user error:', err);
-    res.status(500).json({ error: err.message });
+    logError(req.user?.sAMAccountName || 'unknown', 'TOGGLE_USER', parseLdapError(err), req.ip);
+    const friendly = parseLdapError(err);
+    res.status(500).json({ error: friendly });
   }
 });
 
@@ -197,9 +197,9 @@ router.post('/:username/unlock', authMiddleware, adminMiddleware, validateUserna
     logAction(req.user!.sAMAccountName, 'UNLOCK_USER', String(req.params.username), undefined, req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'UNLOCK_USER', err.message, req.ip);
-    console.error('Unlock user error:', err);
-    res.status(500).json({ error: err.message });
+    logError(req.user?.sAMAccountName || 'unknown', 'UNLOCK_USER', parseLdapError(err), req.ip);
+    const friendly = parseLdapError(err);
+    res.status(500).json({ error: friendly });
   }
 });
 
@@ -222,9 +222,9 @@ router.delete('/:username', authMiddleware, adminMiddleware, validateUsername, a
     logAction(req.user!.sAMAccountName, 'DELETE_USER', String(req.params.username), user.displayName, req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'DELETE_USER', err.message, req.ip);
-    console.error('Delete user error:', err);
-    res.status(500).json({ error: err.message });
+    logError(req.user?.sAMAccountName || 'unknown', 'DELETE_USER', parseLdapError(err), req.ip);
+    const friendly = parseLdapError(err);
+    res.status(500).json({ error: friendly });
   }
 });
 
@@ -266,9 +266,9 @@ router.post('/:username/photo', authMiddleware, validateUsername, upload.single(
     logAction(req.user!.sAMAccountName, 'UPLOAD_PHOTO', String(req.params.username), `${Math.round(resized.length / 1024)}KB`, req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'UPLOAD_PHOTO', err.message, req.ip);
-    console.error('Upload photo error:', err);
-    res.status(500).json({ error: err.message });
+    logError(req.user?.sAMAccountName || 'unknown', 'UPLOAD_PHOTO', parseLdapError(err), req.ip);
+    const friendly = parseLdapError(err);
+    res.status(500).json({ error: friendly });
   }
 });
 
@@ -291,9 +291,9 @@ router.delete('/:username/photo', authMiddleware, validateUsername, async (req: 
     logAction(req.user!.sAMAccountName, 'DELETE_PHOTO', String(req.params.username), undefined, req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'DELETE_PHOTO', err.message, req.ip);
-    console.error('Delete photo error:', err);
-    res.status(500).json({ error: err.message });
+    logError(req.user?.sAMAccountName || 'unknown', 'DELETE_PHOTO', parseLdapError(err), req.ip);
+    const friendly = parseLdapError(err);
+    res.status(500).json({ error: friendly });
   }
 });
 
@@ -322,9 +322,9 @@ router.post('/:username/password', authMiddleware, validateUsername, async (req:
     logAction(req.user!.sAMAccountName, 'RESET_PASSWORD', String(req.params.username), undefined, req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'RESET_PASSWORD', err.message, req.ip);
-    console.error('Reset password error:', err);
-    res.status(500).json({ error: err.message });
+    logError(req.user?.sAMAccountName || 'unknown', 'RESET_PASSWORD', parseLdapError(err), req.ip);
+    const friendly = parseLdapError(err);
+    res.status(500).json({ error: friendly });
   }
 });
 
@@ -338,8 +338,8 @@ router.get('/:username/groups/search', authMiddleware, adminMiddleware, validate
     const groups = await searchGroups(settings, query || undefined);
     res.json({ groups });
   } catch (err: any) {
-    console.error('Search groups error:', err);
-    res.status(500).json({ error: err.message });
+    const friendly = parseLdapError(err);
+    res.status(500).json({ error: friendly });
   }
 });
 
@@ -360,9 +360,9 @@ router.post('/:username/groups', authMiddleware, adminMiddleware, validateUserna
     logAction(req.user!.sAMAccountName, 'ADD_TO_GROUP', String(req.params.username), groupCn, req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'ADD_TO_GROUP', err.message, req.ip);
-    console.error('Add to group error:', err);
-    res.status(500).json({ error: err.message });
+    logError(req.user?.sAMAccountName || 'unknown', 'ADD_TO_GROUP', parseLdapError(err), req.ip);
+    const friendly = parseLdapError(err);
+    res.status(500).json({ error: friendly });
   }
 });
 
@@ -383,9 +383,9 @@ router.delete('/:username/groups', authMiddleware, adminMiddleware, validateUser
     logAction(req.user!.sAMAccountName, 'REMOVE_FROM_GROUP', String(req.params.username), groupCn, req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'REMOVE_FROM_GROUP', err.message, req.ip);
-    console.error('Remove from group error:', err);
-    res.status(500).json({ error: err.message });
+    logError(req.user?.sAMAccountName || 'unknown', 'REMOVE_FROM_GROUP', parseLdapError(err), req.ip);
+    const friendly = parseLdapError(err);
+    res.status(500).json({ error: friendly });
   }
 });
 
@@ -406,9 +406,9 @@ router.post('/:username/move', authMiddleware, adminMiddleware, validateUsername
     logAction(req.user!.sAMAccountName, 'MOVE_USER', String(req.params.username), `→ ${targetOu}`, req.ip);
     res.json({ success: true });
   } catch (err: any) {
-    logError(req.user?.sAMAccountName || 'unknown', 'MOVE_USER', err.message, req.ip);
-    console.error('Move user error:', err);
-    res.status(500).json({ error: err.message });
+    logError(req.user?.sAMAccountName || 'unknown', 'MOVE_USER', parseLdapError(err), req.ip);
+    const friendly = parseLdapError(err);
+    res.status(500).json({ error: friendly });
   }
 });
 

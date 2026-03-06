@@ -54,6 +54,52 @@ const AD_USER_ATTRIBUTES = [
   'jpegPhoto',
 ];
 
+// Parse LDAP errors into human-readable messages
+const LDAP_DATA_CODES: Record<string, string> = {
+  '525': 'User not found in directory',
+  '52e': 'Invalid credentials',
+  '530': 'Account not permitted to logon at this time',
+  '531': 'Account not permitted to logon from this workstation',
+  '532': 'Password has expired',
+  '533': 'Account is disabled',
+  '701': 'Account has expired',
+  '773': 'User must reset password before logging in',
+  '775': 'Account is locked out',
+};
+
+export function parseLdapError(err: any): string {
+  const msg = err?.message || String(err);
+
+  // Extract AD-specific data code from "data XXX" pattern
+  const dataMatch = msg.match(/data\s+([0-9a-fA-F]+)/);
+  if (dataMatch) {
+    const friendly = LDAP_DATA_CODES[dataMatch[1].toLowerCase()];
+    if (friendly) return friendly;
+  }
+
+  // Connection errors
+  if (err?.code === 'ECONNREFUSED' || msg.includes('ECONNREFUSED'))
+    return 'AD server connection refused — verify server URL and port';
+  if (err?.code === 'ENOTFOUND' || msg.includes('ENOTFOUND'))
+    return 'AD server hostname not found — check DNS or server URL';
+  if (err?.code === 'ETIMEDOUT' || msg.includes('ETIMEDOUT') || msg.includes('connectTimeout'))
+    return 'AD server connection timed out — server may be unreachable';
+  if (msg.includes('ECONNRESET') || msg.includes('socket hang up'))
+    return 'AD connection reset — check TLS settings and server availability';
+  if (msg.includes('self-signed') || msg.includes('CERT_'))
+    return 'AD TLS certificate error — check certificate or TLS configuration';
+
+  // LDAP protocol errors
+  if (err?.code === 49 || msg.includes('InvalidCredentials'))
+    return 'Invalid bind credentials — check service account username and password';
+  if (err?.code === 32 || msg.includes('NoSuchObject'))
+    return 'Base DN not found — check baseDN configuration';
+  if (err?.code === 1 || msg.includes('OperationsError'))
+    return 'LDAP operations error — service account may lack permissions';
+
+  return msg;
+}
+
 function createClient(settings: AdSettings): Client {
   return new Client({
     url: settings.url,
