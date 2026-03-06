@@ -203,6 +203,7 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
   const [ouExpanded, setOuExpanded] = useState(false);
   const [upnSuffixes, setUpnSuffixes] = useState<string[]>([]);
   const [selectedSuffix, setSelectedSuffix] = useState('');
+  const [upnManuallyEdited, setUpnManuallyEdited] = useState(false);
 
   useEffect(() => {
     setOuLoading(true);
@@ -224,8 +225,8 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
         const last = key === 'sn' ? value : f.sn;
         updated.displayName = `${first} ${last}`.trim();
       }
-      // Auto-fill UPN prefix from username
-      if (key === 'sAMAccountName' && !f.upnPrefix) {
+      // Auto-fill UPN prefix from username unless manually edited
+      if (key === 'sAMAccountName' && !upnManuallyEdited) {
         updated.upnPrefix = value;
       }
       return updated;
@@ -313,7 +314,7 @@ function AddUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
               <input
                 className="input rounded-r-none border-r-0 flex-1"
                 value={form.upnPrefix}
-                onChange={(e) => updateField('upnPrefix', e.target.value)}
+                onChange={(e) => { updateField('upnPrefix', e.target.value); setUpnManuallyEdited(true); }}
                 placeholder={form.sAMAccountName || 'username'}
               />
               <span className="inline-flex items-center px-3 bg-gray-100 border border-gray-300 text-gray-500 text-sm">@</span>
