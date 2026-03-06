@@ -124,13 +124,25 @@ router.put('/:username', authMiddleware, validateUsername, validateFieldLengths,
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
 
     const changes: Record<string, string | null> = {};
+    const SKIP_KEYS = new Set(['dn', 'sAMAccountName', 'thumbnailPhoto', '_upnPrefix', '_upnSuffix']);
 
     for (const [key, value] of Object.entries(req.body)) {
-      if (key === 'dn' || key === 'sAMAccountName' || key === 'thumbnailPhoto') continue;
+      if (SKIP_KEYS.has(key)) continue;
       changes[key] = value as string | null;
     }
 
-    const changedKeys = Object.keys(changes).filter((k) => changes[k] !== (user as any)[k]);
+    // Detect truly changed fields: normalize both sides (empty/null/undefined → '')
+    const changedKeys = Object.keys(changes).filter((k) => {
+      const newVal = changes[k] || '';
+      const oldVal = (user as any)[k] || '';
+      return newVal !== oldVal;
+    });
+
+    if (changedKeys.length === 0) {
+      res.json({ success: true });
+      return;
+    }
+
     await updateUser(settings, user.dn, changes, user);
     logAction(req.user!.sAMAccountName, 'UPDATE_USER', String(req.params.username), changedKeys.join(', '), req.ip);
     res.json({ success: true });
