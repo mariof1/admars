@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { getDb, getSettings } from '../config/database.js';
 import { searchUsers } from '../services/ldap.js';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.js';
+import { logAction } from '../utils/logger.js';
 
 const router = Router();
 
@@ -132,6 +133,34 @@ router.get('/stats', authMiddleware, adminMiddleware, async (_req: AuthRequest, 
       recentFailedLogins,
       userStats,
     });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Prune old logs
+router.delete('/logs', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const db = getDb();
+    const olderThan = String(req.query.olderThan || '');
+
+    if (!olderThan) {
+      res.status(400).json({ error: 'olderThan query parameter is required (ISO date or number of days)' });
+      return;
+    }
+
+    // Accept either ISO date string or number of days
+    let cutoff: string;
+    const days = parseInt(olderThan);
+    if (!isNaN(days) && days > 0) {
+      cutoff = new Date(Date.now() - days * 86400000).toISOString();
+    } else {
+      cutoff = olderThan;
+    }
+
+    const result = db.prepare('DELETE FROM audit_logs WHERE timestamp < ?').run(cutoff);
+    logAction(req.user!.sAMAccountName, 'PRUNE_LOGS', undefined, `${result.changes} entries older than ${olderThan}`, req.ip);
+    res.json({ deleted: result.changes });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

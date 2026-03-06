@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Activity, Shield, AlertTriangle, Users, Clock, Search,
   ChevronLeft, ChevronRight, Filter, Globe, CheckCircle, XCircle,
-  TrendingUp, UserCheck, UserX, Lock, Loader2
+  TrendingUp, UserCheck, UserX, Lock, Loader2, Trash2
 } from 'lucide-react';
 import api from '../api/client';
 
@@ -97,6 +97,9 @@ export default function Reports() {
   const [actionFilter, setActionFilter] = useState('');
   const [successFilter, setSuccessFilter] = useState('');
   const [availableActions, setAvailableActions] = useState<string[]>([]);
+  const [showPrune, setShowPrune] = useState(false);
+  const [pruneOption, setPruneOption] = useState('30');
+  const [pruning, setPruning] = useState(false);
 
   const pageSize = 25;
 
@@ -133,6 +136,20 @@ export default function Reports() {
   }, [tab, fetchLogs]);
 
   const totalPages = Math.ceil(logsTotal / pageSize);
+
+  const handlePrune = async () => {
+    setPruning(true);
+    try {
+      const { deleted } = await api.pruneAuditLogs(pruneOption);
+      setShowPrune(false);
+      fetchLogs();
+      alert(`Pruned ${deleted} log entries.`);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setPruning(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -337,8 +354,40 @@ export default function Reports() {
                 <option value="true">Success</option>
                 <option value="false">Failed</option>
               </select>
+              <button
+                onClick={() => setShowPrune(true)}
+                className="btn-secondary text-sm px-3 py-2 text-red-600 hover:text-red-700 whitespace-nowrap"
+              >
+                <Trash2 size={14} className="inline mr-1" />Prune
+              </button>
             </div>
           </div>
+
+          {/* Prune modal */}
+          {showPrune && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowPrune(false)}>
+              <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">Prune Activity Logs</h3>
+                <p className="text-sm text-gray-500 mb-4">Permanently delete old log entries. This cannot be undone.</p>
+                <label className="label">Delete logs older than</label>
+                <select className="input w-full mb-4" value={pruneOption} onChange={(e) => setPruneOption(e.target.value)}>
+                  <option value="7">7 days</option>
+                  <option value="14">14 days</option>
+                  <option value="30">30 days</option>
+                  <option value="60">60 days</option>
+                  <option value="90">90 days</option>
+                  <option value="180">180 days</option>
+                  <option value="365">1 year</option>
+                </select>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowPrune(false)} className="btn-secondary flex-1">Cancel</button>
+                  <button onClick={handlePrune} disabled={pruning} className="flex-1 px-4 py-2 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors">
+                    {pruning ? <Loader2 size={16} className="animate-spin mx-auto" /> : 'Delete Logs'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Logs table */}
           <div className="card overflow-hidden">

@@ -101,6 +101,7 @@ class ApiClient {
   }
   getAuditActions() { return this.fetch<{ actions: string[] }>('/audit/actions'); }
   getAuditStats() { return this.fetch<any>('/audit/stats'); }
+  pruneAuditLogs(olderThan: string) { return this.fetch<{ deleted: number }>(`/audit/logs?olderThan=${encodeURIComponent(olderThan)}`, { method: 'DELETE' }); }
 }
 
 export const api = new ApiClient();
