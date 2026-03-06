@@ -143,7 +143,13 @@ router.put('/:username', authMiddleware, validateUsername, validateFieldLengths,
       return;
     }
 
-    await updateUser(settings, user.dn, changes, user);
+    // Only send actually changed fields to LDAP
+    const changedOnly: Record<string, string | null> = {};
+    for (const k of changedKeys) {
+      changedOnly[k] = changes[k];
+    }
+
+    await updateUser(settings, user.dn, changedOnly, user);
     logAction(req.user!.sAMAccountName, 'UPDATE_USER', String(req.params.username), changedKeys.join(', '), req.ip);
     res.json({ success: true });
   } catch (err: any) {

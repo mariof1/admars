@@ -26,6 +26,14 @@ export interface AdUser {
   info: string;
   employeeID: string;
   employeeNumber: string;
+  wWWHomePage: string;
+  ipPhone: string;
+  facsimileTelephoneNumber: string;
+  pager: string;
+  homeDrive: string;
+  homeDirectory: string;
+  scriptPath: string;
+  profilePath: string;
   lockoutTime: string;
   userAccountControl: number;
   whenCreated: string;
@@ -104,6 +112,14 @@ function parseEntry(entry: Record<string, any>): AdUser {
     info: get('info'),
     employeeID: get('employeeID'),
     employeeNumber: get('employeeNumber'),
+    wWWHomePage: get('wWWHomePage'),
+    ipPhone: get('ipPhone'),
+    facsimileTelephoneNumber: get('facsimileTelephoneNumber'),
+    pager: get('pager'),
+    homeDrive: get('homeDrive'),
+    homeDirectory: get('homeDirectory'),
+    scriptPath: get('scriptPath'),
+    profilePath: get('profilePath'),
     lockoutTime: (() => {
       const v = get('lockoutTime');
       if (!v || (Array.isArray(v) && v.length === 0)) return '0';
